@@ -153,6 +153,14 @@ func map(_ s: VXSettings) -> [String: String] { Dictionary(uniqueKeysWithValues:
         let f2 = VXSettings(defaults: fd, info: [:], environment: [:])
         check(!f2.foveation && f2.baseResolution == 3072, "foveation and base persisted")
         check(VXSettings(defaults: fd, info: [:], environment: ["VXRT_FOVEATION": "1", "VXRT_BASE_RESOLUTION": "2560"]).foveation, "foveation env wins")
+        // foveated rendering in the game's passes: off by default, the choice persists and is exported, the launch's VXRT_FOVE wins
+        check(f1.foveatedRendering == .off && map(f1)["VXRT_FOVE"] == nil, "foveated rendering off by default")
+        f1.foveatedRendering = .medium
+        check(map(f1)["VXRT_FOVE"] == "medium", "foveated rendering exported \(map(f1))")
+        check(VXSettings(defaults: fd, info: [:], environment: [:]).foveatedRendering == .medium, "foveated rendering persisted")
+        check(VXSettings(defaults: fd, info: [:], environment: ["VXRT_FOVE": "high"]).foveatedRendering == .high, "foveated rendering env wins")
+        check(VXSettings(defaults: fd, info: ["VXFoveatedRenderingDefault": "low"], environment: ["VXRT_FOVE": "off"]).foveatedRendering == .off, "foveated rendering env off wins")
+        f1.foveatedRendering = .off
         check(VXSettings(defaults: fd, info: [:], environment: ["VXRT_BASE_RESOLUTION": "2560"]).baseResolution == 2560, "base env wins")
         check(VXSettings(defaults: fresh(), info: [:], environment: ["VXRT_BASE_RESOLUTION": "1234"]).baseResolution == 0, "an unknown base is the standard")
         f2.baseResolution = 0

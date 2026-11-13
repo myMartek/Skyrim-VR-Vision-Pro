@@ -50,6 +50,14 @@ enum VXEdgeMask: String, CaseIterable, Identifiable {
     }
 }
 
+// Foveated rendering in the game's own passes (VXRT_FOVE; src/d3d11_draw.m, "foveated rendering"): the game draws the middle of each
+// eye's picture at full resolution and the edge, which the lenses blur anyway, with fewer pixels. Not the display's foveation
+// (VXSettings.foveation, "High-resolution display"), which is about how the finished picture reaches the screen.
+enum VXFoveatedRendering: String, CaseIterable, Identifiable {
+    case off, low, medium, high
+    var id: String { rawValue }
+}
+
 struct VXHandsBlob: Codable, Equatable {
     var handMatting: Bool
     private enum CodingKeys: String, CodingKey { case handMatting }
@@ -227,6 +235,7 @@ final class VXSettings: ObservableObject {
     static let graphicsKey = "vxrt.graphics"
     static let maxRateKey = "klepton.maxRate"       // Klepton's key and values (KleptonTuning.swift, KleptonRendering.maxRate)
     static let foveationKey = "vxrt.foveation"
+    static let foveatedRenderingKey = "vxrt.foveatedRendering"
     static let baseResolutionKey = "vxrt.baseResolution"
     /// The base resolutions offered: 0 is the standard (the display's own picture without foveation, 2048 with it), the others the width
     /// of each eye's picture in pixels; its height follows the display's shape.
@@ -273,6 +282,8 @@ final class VXSettings: ObservableObject {
     // Whether the display's picture is foveated: sharp where the eye looks, coarser at the edge, which is what lets the system give the
     // app its high-resolution picture at all (CompositorServices accepts a higher render quality only with foveation). Next launch.
     @Published var foveation: Bool { didSet { if !suppress { defaults.set(foveation, forKey: Self.foveationKey) } } }
+    // Foveated rendering in the game's passes: off unless chosen (env VXRT_FOVE, the saved choice, Info.plist VXFoveatedRenderingDefault). Next launch.
+    @Published var foveatedRendering: VXFoveatedRendering { didSet { if !suppress { defaults.set(foveatedRendering.rawValue, forKey: Self.foveatedRenderingKey) } } }
     // The base resolution: the width of the picture each eye is drawn for, of which Resolution is a share and which MetalFX enlarges to
     // (0 = standard). Independent of the display's own picture, as "Max resolution per eye" is in Klepton's games. Next launch.
     @Published var baseResolution: Int {
@@ -407,6 +418,10 @@ final class VXSettings: ObservableObject {
         if let v = defaults.object(forKey: Self.foveationKey) as? Bool { fove = v }
         if let v = Self.flag(environment["VXRT_FOVEATION"]) { fove = v }
         foveation = fove
+        var fr: VXFoveatedRendering = (info["VXFoveatedRenderingDefault"] as? String).flatMap(VXFoveatedRendering.init(rawValue:)) ?? .off
+        if let st = defaults.string(forKey: Self.foveatedRenderingKey), let v = VXFoveatedRendering(rawValue: st) { fr = v }
+        if let e = environment["VXRT_FOVE"] { fr = VXFoveatedRendering(rawValue: e) ?? .off }
+        foveatedRendering = fr
         var base = (info["VXBaseResolutionDefault"] as? String).flatMap(Int.init) ?? 0
         if let v = defaults.object(forKey: Self.baseResolutionKey) as? Int { base = v }
         if let v = environment["VXRT_BASE_RESOLUTION"].flatMap(Int.init) { base = v }
@@ -478,6 +493,7 @@ final class VXSettings: ObservableObject {
         if let v = sharpen, v > 0 { out.append(("VXRT_SHARPEN", String(format: "%.2f", min(max(v, 0), 1)))) }
         if let v = renderQuality { out.append(("VXRT_RENDER_QUALITY", String(format: "%.2f", min(max(v, 0), 1)))) }
         out += edgeMask.exports
+        if foveatedRendering != .off { out.append(("VXRT_FOVE", foveatedRendering.rawValue)) }
         if let h = stageEyeHeight { out.append(("VXRT_STAGE_EYE_HEIGHT", String(format: "%.2f", min(max(h, Self.eyeHeightRange.lowerBound), Self.eyeHeightRange.upperBound)))) }
         let ini = iniOverrides()
         if !ini.isEmpty { out.append(("VXRT_INI_SET", ini.joined(separator: ";"))) }

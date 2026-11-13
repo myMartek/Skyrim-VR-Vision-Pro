@@ -270,7 +270,10 @@ final class VXStatsPanel {
         s.eyeW = Int((Double(base.w) * scale).rounded()); s.eyeH = Int((Double(base.h) * scale).rounded())
         s.upscale = settings.upscale == .metalfx ? (scale < 0.999 ? 2 : 1) : 0
         if s.upscale == 1 { s.upscaleNote = "nothing to upscale at 100 %" }
-        s.path = VXDisplay.foveated ? "D3D11 on Metal · foveated display" : "D3D11 on Metal · plain display"
+        var fovePercent: UInt32 = 0
+        let foveLevel = vx_d3d_fove_status(&fovePercent)       // foveated rendering in the game's passes, when it is really in use
+        s.path = (VXDisplay.foveated ? "D3D11 on Metal · foveated display" : "D3D11 on Metal · plain display")
+            + (foveLevel > 0 ? " · FR \(["", "low", "medium", "high"][Int(min(foveLevel, 3))]) \(fovePercent)%" : "")
         note(s)
     }
 }

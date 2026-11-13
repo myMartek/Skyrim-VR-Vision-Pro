@@ -219,6 +219,15 @@ struct VXSettingsPage: View {
                                        "Apples MetalFX bringt das Bild des Spiels auf die Größe der Anzeige: schärfer als einfaches Skalieren.")
                                  : vxT("The picture is simply stretched: softer, with no extra work.",
                                        "Das Bild wird nur gestreckt: weicher, ohne zusätzliche Arbeit."))
+                            Text("Foveated Rendering")
+                            Picker("Foveated Rendering", selection: $settings.foveatedRendering) {
+                                Text(vxT("Off", "Aus")).tag(VXFoveatedRendering.off)
+                                Text(vxT("Low", "Leicht")).tag(VXFoveatedRendering.low)
+                                Text(vxT("Medium", "Mittel")).tag(VXFoveatedRendering.medium)
+                                Text(vxT("High", "Stark")).tag(VXFoveatedRendering.high)
+                            }.pickerStyle(.segmented)
+                            note(vxT("The game draws the middle of the picture at full sharpness and the edge with fewer pixels, which makes it run more smoothly. The stronger, the more you may notice a soft edge when you look sideways. Takes effect at the next start.",
+                                     "Das Spiel zeichnet die Bildmitte in voller Schärfe und den Rand mit weniger Pixeln und läuft dadurch flüssiger. Je stärker, desto eher fällt ein weicher Rand auf, wenn du zur Seite schaust. Gilt ab dem nächsten Start."))
                             Picker(vxT("Unseen edge", "Unsichtbarer Rand"), selection: $settings.edgeMask) {
                                 Text(vxT("Draw everything", "Alles zeichnen")).tag(VXEdgeMask.off)
                                 Text(vxT("Skip a little", "Wenig auslassen")).tag(VXEdgeMask.slight)

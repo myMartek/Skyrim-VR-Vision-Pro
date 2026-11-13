@@ -310,12 +310,27 @@ xros-settings-check: tests/xros_settings_test.swift xros/app/Sources/VXSettings.
 	build/xros_settings_test
 
 # The two menu buttons' logic for the performance panel (Create + Options), on the Mac.
+# The pixel shader variant for foveated rendering (dxbc_translate_fove): every pixel shader fixture translates to it and
+# Metal compiles the result (gathers, loads, size queries and samples of 2D textures all go through its coordinate
+# mapping); the plain translation of the same shader is byte for byte what it was; a vertex shader has no such variant.
+.PHONY: fove-variant-check
+fove-variant-check: build/dxbc2msl
+	@for s in color_ps features_ps math_ps tex_ps unbound_ps; do \
+	  build/dxbc2msl tests/shaders/$$s.dxbc > build/fove-check.base.msl 2>/dev/null || { echo "fove-variant-check: $$s does not translate" >&2; exit 1; }; \
+	  build/dxbc2msl -fove tests/shaders/$$s.dxbc > build/fove-check.fove.msl 2> build/fove-check.err || { cat build/fove-check.err >&2; echo "fove-variant-check: $$s has no compiling variant" >&2; exit 1; }; \
+	  build/dxbc2msl -fove-far tests/shaders/$$s.dxbc > /dev/null 2> build/fove-check.err || { cat build/fove-check.err >&2; echo "fove-variant-check: $$s has no compiling far variant" >&2; exit 1; }; \
+	  grep -q 'constant VxFove &vx_fove' build/fove-check.fove.msl || { echo "fove-variant-check: $$s: the variant takes no VxFove" >&2; exit 1; }; \
+	  ! grep -q 'vx_fove' build/fove-check.base.msl || { echo "fove-variant-check: $$s: the plain translation mentions vx_fove" >&2; exit 1; }; \
+	done
+	@build/dxbc2msl -fove tests/shaders/tex_ps.dxbc 2>/dev/null | grep -q 'VX_FOVE_UV(0, ' || { echo 'fove-variant-check: tex_ps samples t0 without the mapping' >&2; exit 1; }
+	@! build/dxbc2msl -fove tests/shaders/color_vs.dxbc > /dev/null 2>&1 || { echo 'fove-variant-check: a vertex shader got a variant' >&2; exit 1; }
+	@echo 'fove variant: ok'
 xros-stats-chord-check: tests/xros_stats_chord_test.swift xros/app/Sources/VXStatsPanel.swift
 	@mkdir -p build
 	swiftc -D VX_CHORD_TEST -parse-as-library -o build/xros_stats_chord_test xros/app/Sources/VXStatsPanel.swift tests/xros_stats_chord_test.swift
 	build/xros_stats_chord_test
 .PHONY: xros-stats-chord-check
-check: native-vr-unit-check xros-settings-check xros-stats-chord-check xros-mods-check xros-prune-check
+check: native-vr-unit-check xros-settings-check xros-stats-chord-check xros-mods-check xros-prune-check fove-variant-check
 xros-prune-check: tests/xros_prune_test.c xros/app/Sources/vx_prune.h
 	@mkdir -p build
 	clang -Wall -Wextra -Ixros/app/Sources -o build/xros_prune_test tests/xros_prune_test.c

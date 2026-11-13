@@ -150,7 +150,9 @@ Read in the fork `https://github.com/myMartek/Klepton` at tag `toolchain-890` (S
 | The GPU's working time for the process (a completed handler on every committed command buffer, spans merged) and the count of shaders and pipeline states compiled or fetched | `runtime/gfx/kl_mtl_busy.m` (SHA-256 of the fork's copy at `toolchain-890`: see the file's header) | `VXRuntime/xros/app/Sources/VXGpuBusy.m`: **copied** under this app's names, without the logic-operation part; installed when the panel is first shown |
 | The panel's size and place (0.338 m wide at 1.2 m, middle at -0.05, 0.101 in the head's frame) | `KleptonMetrics.swift` `panelSize`, `KleptonCompositor.swift` (the panel's pose) | `VXStatsPanel.swift` |
 
-Not adopted: play area and room measuring, the frame-rate picker, frame generation, the tap of Create + Options (MetalFX on and off).
+| Foveated rendering in the game's own passes: the profile per level (box 1216, 1024, 768 of 2016, ramp 384 of 2016, floor 1/3, 0.22, 0.125 of the eye's height), each eye's map peaking at its own straight-ahead point and at the other eye's, the seam clamp when the picture is expanded, and the measured rate-map facts the design rests on | `runtime/gfx/kl_fove.m` (`kf_profile`, `kl_fove_curves_env2`, the expand shader) and `docs/FOVEATION.md` at `ac79f7e` | `VXRuntime/src/d3d11_draw.m`, "foveated rendering" (`VXRT_FOVE`): the profile functions **ported** (`fove_profile`, `fove_profile2`, `fove_map`); the method is its own (the Direct3D layer makes the passes itself, so nothing is swizzled; targets get twins in the map's layout, and pixel shaders a variant that reads twins in place: `dxbc_translate_fove`) |
+
+Not adopted: play area and room measuring, frame generation, the tap of Create + Options (MetalFX on and off).
 
 The old "Display quality" setting (`VXRT_RENDER_QUALITY` as a slider) is gone from the settings: without foveation Compositor Services
 refuses a render-quality ceiling and the layer fails, which ended the app at start on a Vision Pro M5 with visionOS 27.3 (two launches,
