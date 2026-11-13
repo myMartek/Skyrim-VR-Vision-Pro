@@ -73,9 +73,11 @@ final class VXStatsPanel {
         let env = ProcessInfo.processInfo.environment
         return (env["VXRT_STATS_CARD_BUTTONS"] ?? env["KL_STATS_CARD_BUTTONS"]) != "0"
     }()
-    /// The panel's size and place in the view: 0.72 m wide at 1.2 m (about 33 degrees), its middle 0.26 m above straight ahead.
-    /// Klepton's is 0.34 m; this app's eye image has fewer pixels a degree, and the panel's type has to be read in it.
-    static let widthMeters: Float = 0.72, distanceMeters: Float = 1.2, raiseMeters: Float = 0.26
+    /// The panel's size and place in the view, exactly Klepton's (KLMetricsPanel.panelSize and the pose in KleptonCompositor.swift, "the
+    /// owner's place for it, found in three tries on the headset"): 0.338 m wide at 1.2 m, just left of the middle, its lower edge a
+    /// little above it.
+    static let widthMeters: Float = KLMetricsPanel.panelSize.x, distanceMeters: Float = 1.2
+    static let offsetMeters = SIMD2<Float>(-0.05, 0.101)
 
     private let lock = NSLock()
     private var chord = VXMenuChord()
@@ -99,7 +101,10 @@ final class VXStatsPanel {
         if changed && on { samples.removeAll() }
         lock.unlock()
         guard changed else { return }
-        vxrt_jlog("stats_panel", "\"shown\":\(on),\"why\":\"\(why)\"")
+        // Until the panel is first shown nothing of it exists: no count of the GPU's command buffers either.
+        var counting = false
+        if on { counting = vx_gpu_busy_install() != 0; _ = vx_gpu_busy_take(nil); vx_gpu_compiles_take(nil, nil); lastSample = CACurrentMediaTime() }
+        vxrt_jlog("stats_panel", "\"shown\":\(on),\"why\":\"\(why)\",\"gpu_counted\":\(counting)")
         if on { redraw() }
     }
 
@@ -165,7 +170,7 @@ final class VXStatsPanel {
                 map: MTLRasterizationRateMap?, viewport: MTLViewport) {
         let shape = SIMD2<Float>(Self.widthMeters, Self.widthMeters * Float(KLMetricsPanel.panelLayout.h) / Float(KLMetricsPanel.panelLayout.w))
         let displayWidth = map != nil && viewport.width > 0 ? viewport.width : Double(color.width)
-        guard let at = VXOverlayQuad.place(size: shape, distance: Self.distanceMeters, raise: Self.raiseMeters, view: view,
+        guard let at = VXOverlayQuad.place(size: shape, distance: Self.distanceMeters, offset: Self.offsetMeters, view: view,
                                            projection: projection, displayWidth: displayWidth) else { return }
         // as many pixels as the panel gets on the display, up to the size it is laid out on
         let w = min(max(at.pixels & ~1, 240), KLMetricsPanel.panelPixels.w)
@@ -191,8 +196,7 @@ final class VXStatsPanel {
         return Double(text)
     }
 
-    private var lastCPU: (time: Double, used: Double)?
-    private var topThread = ""
+    private var lastSample = CACurrentMediaTime()
     /// CPU the process used since the last call, in cores, and the busiest thread's share of one core with its name.
     private func cpu() -> (cores: Float, top: Float, name: String) {
         var threads: thread_act_array_t?
@@ -234,10 +238,25 @@ final class VXStatsPanel {
         var s = KLMetricsSample()
         s.fps = Float(Self.number("imm_interval_fresh", in: vr) ?? 0)
         s.displayHz = Float(frames)
-        s.compiles = -1
-        if let ms = Self.number("cf_gpu_ms_mean", in: timing), ms > 0 { s.gpuCompMs = Float(ms) }
-        // (L: from a game pair's hand-over to the end of its GPU work, the smart gate's own measure, src/xrizer_xros_host.m)
-        if let ms = Self.number("L_ms", in: timing), ms > 0 { s.gpuGameMs = Float(ms) }
+        let now = CACurrentMediaTime(), dt = max(now - lastSample, 0.25)
+        lastSample = now
+        // Shaders and pipeline states asked of Metal this second (VXGpuBusy.m), compiled or only fetched.
+        var compiled: UInt = 0, cached: UInt = 0
+        vx_gpu_compiles_take(&compiled, &cached)
+        s.compiles = Float(Double(compiled) / dt); s.compilesCached = Float(Double(cached) / dt)
+        let compMs = Self.number("cf_gpu_ms_mean", in: timing) ?? 0, compFrames = Self.number("cf_frames", in: timing) ?? 0
+        if compMs > 0 { s.gpuCompMs = Float(compMs) }
+        // The GPU's working time for the app, as Klepton's panel has it (kl_metrics.c): against the wall clock a utilization; less the
+        // display's share and over the game's frames, the GPU time of a game frame.
+        let busy = vx_gpu_busy_take(nil)
+        if busy >= 0 {
+            s.gpuBusy = Float(min(busy / dt, 1))
+            let game = busy - compMs * compFrames / 1000
+            if s.fps >= 1, game > 0 { s.gpuGameMs = Float(game / Double(s.fps) * 1000) }
+        } else if let ms = Self.number("L_ms", in: timing), ms > 0 {
+            // (L: from a game pair's hand-over to the end of its GPU work, the smart gate's own measure, src/xrizer_xros_host.m)
+            s.gpuGameMs = Float(ms)
+        }
         let c = cpu()
         s.cpuCores = c.cores; s.cpuTop = c.top; s.cpuTopName = c.name
         let m = memory()

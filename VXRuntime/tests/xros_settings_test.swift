@@ -165,6 +165,22 @@ func map(_ s: VXSettings) -> [String: String] { Dictionary(uniqueKeysWithValues:
         check(VXSettings.baseSize(choice: 2560, foveated: false, texture: (2048, 1984), fieldOfView: (2.0, 2.0)) == (2560, 2560), "base: chosen without foveation")
         check(VXSettings.baseSize(choice: 2560, foveated: true, texture: (2048, 1984), fieldOfView: (0, 0)) == (2048, 1984), "base: no field of view, the texture")
 
+        // graphics quality: standard writes nothing; a level writes the game's own preset keys, before the other ini settings and after the
+        // launch's own (the first match wins in client.c); saved; env wins
+        let gd = fresh()
+        let g1 = VXSettings(defaults: gd, info: [:], environment: [:])
+        check(g1.graphics == .standard && map(g1)["VXRT_INI_SET"] == nil, "graphics standard writes nothing")
+        g1.graphics = .low
+        let lowSet = map(g1)["VXRT_INI_SET"] ?? ""
+        check(lowSet.hasPrefix("Display.iShadowMapResolution=1024;Display.fShadowDistance=2000;") && lowSet.contains("Display.fMeshLODLevel1FadeDist=4096")
+              && lowSet.contains("Trees.bEnableTreeAnimations=0") && lowSet.hasSuffix("Grass.fGrassStartFadeDistance=1500"), "graphics low keys \(lowSet)")
+        check(!lowSet.contains("DynamicResolution") && !lowSet.contains("fRenderTargetSizeMultiplier"), "graphics leaves the picture size alone")
+        check(VXGraphics.low.iniSet.count == 13 && VXGraphics.medium.iniSet.map(\.key) == VXGraphics.low.iniSet.map(\.key) && VXGraphics.high.iniSet.map(\.key) == VXGraphics.low.iniSet.map(\.key), "graphics levels name the same keys")
+        check(VXSettings(defaults: gd, info: [:], environment: [:]).graphics == .low, "graphics persisted")
+        check(VXSettings(defaults: gd, info: [:], environment: ["VXRT_GRAPHICS": "high"]).graphics == .high, "graphics env wins")
+        let g2 = VXSettings(defaults: gd, info: [:], environment: ["VXRT_INI_SET": "Display.fShadowDistance=7000"])
+        check((map(g2)["VXRT_INI_SET"] ?? "").hasPrefix("Display.fShadowDistance=7000;Display.iShadowMapResolution=1024"), "the launch's own key comes first")
+
         // the launch gate
         check(VXLaunchGate.enabled(info: ["VXStartWindow": "1"], environment: [:], defaultLaunch: true), "gate on")
         check(!VXLaunchGate.enabled(info: ["VXStartWindow": "1"], environment: [:], defaultLaunch: false), "explicit -test/-game: no gate")

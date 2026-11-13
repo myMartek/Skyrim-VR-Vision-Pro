@@ -105,12 +105,12 @@ final class VXOverlayQuad {
         return true
     }
 
-    /// Where a card `size` metres wide and high, `distance` metres ahead of the head and `raise` metres above straight ahead, lies in
-    /// this eye: its middle and half extents in normalized device coordinates, and how many pixels wide it is on the display.
-    /// `view` is the drawable's eye transform (head from eye), `projection` its projection (right-up-back).
-    static func place(size: SIMD2<Float>, distance: Float, raise: Float, view: simd_float4x4, projection: simd_float4x4,
+    /// Where a card `size` metres wide and high lies in this eye, `distance` metres ahead of the head with its middle `offset` metres
+    /// to the right of and above straight ahead: its middle and half extents in normalized device coordinates, and how many pixels
+    /// wide it is on the display. `view` is the drawable's eye transform (head from eye), `projection` its projection (right-up-back).
+    static func place(size: SIMD2<Float>, distance: Float, offset: SIMD2<Float>, view: simd_float4x4, projection: simd_float4x4,
                       displayWidth: Double) -> (centre: SIMD2<Float>, half: SIMD2<Float>, pixels: Int)? {
-        let p = projection * (view.inverse * SIMD4<Float>(0, raise, -distance, 1))
+        let p = projection * (view.inverse * SIMD4<Float>(offset.x, offset.y, -distance, 1))
         guard p.w > 0, distance > 0 else { return nil }
         let half = SIMD2<Float>(size.x * 0.5 * projection.columns.0.x / distance, size.y * 0.5 * projection.columns.1.y / distance)
         return (SIMD2<Float>(p.x / p.w, p.y / p.w), half, Int(Double(half.x) * displayWidth))

@@ -385,6 +385,27 @@ struct VXGameSettingsPage: View {
                 Label(vxT("“Game default” changes nothing: the game keeps its own value. Everything here applies the next time you start the game.",
                           "„Wie im Spiel“ ändert nichts: Das Spiel behält seinen eigenen Wert. Alles hier gilt beim nächsten Start des Spiels."),
                       systemImage: "info.circle").font(.callout).foregroundStyle(.secondary)
+                GroupBox(vxT("Graphics quality", "Grafikqualität")) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Picker(vxT("Graphics quality", "Grafikqualität"), selection: $settings.graphics) {
+                            Text("Standard").tag(VXGraphics.standard)
+                            Text(vxT("Low", "Niedrig")).tag(VXGraphics.low)
+                            Text(vxT("Medium", "Mittel")).tag(VXGraphics.medium)
+                            Text(vxT("High", "Hoch")).tag(VXGraphics.high)
+                        }.pickerStyle(.segmented).labelsHidden()
+                        note(settings.graphics == .standard
+                             ? vxT("The balanced values this app starts the game with.",
+                                   "Die ausgewogenen Werte, mit denen diese App das Spiel startet.")
+                             : settings.graphics == .low
+                             ? vxT("The game's own “Low”: shorter shadows, distant objects and trees in their simpler forms sooner, less grass, no tree animation. The one to try when the game stutters: it also takes work off the processor.",
+                                   "Das „Niedrig“ des Spiels: kürzere Schatten, ferne Objekte und Bäume früher in einfacher Form, weniger Gras, keine Baumanimation. Die Stufe zum Ausprobieren, wenn das Spiel ruckelt: Sie entlastet auch den Prozessor.")
+                             : settings.graphics == .medium
+                             ? vxT("The game's own “Medium”: full detail in the distance, shadows to a middle distance.",
+                                   "Das „Mittel“ des Spiels: volle Details in der Ferne, Schatten bis in mittlere Entfernung.")
+                             : vxT("The game's own “High”: the longest shadows, shadows on trees, more grass. The heaviest.",
+                                   "Das „Hoch“ des Spiels: die weitesten Schatten, Schatten auf Bäumen, mehr Gras. Die schwerste Stufe."))
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                }
                 GroupBox(vxT("Turning", "Drehen")) {
                     VStack(alignment: .leading, spacing: 10) {
                         Picker(vxT("Turning", "Drehen"), selection: $settings.turn) {

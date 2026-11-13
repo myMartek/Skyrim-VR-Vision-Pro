@@ -53,7 +53,7 @@ final class VXLoadingCard {
         if eye == 0 { tick(shown: shown) }
         guard color.pixelFormat == .bgra8Unorm_srgb || color.pixelFormat == .bgra8Unorm else { return false }
         let displayWidth = map != nil && viewport.width > 0 ? viewport.width : Double(color.width)
-        guard let at = VXOverlayQuad.place(size: SIMD2(Self.widthMeters, Self.heightMeters), distance: Self.distanceMeters, raise: 0,
+        guard let at = VXOverlayQuad.place(size: SIMD2(Self.widthMeters, Self.heightMeters), distance: Self.distanceMeters, offset: SIMD2(0, 0),
                                            view: view, projection: projection, displayWidth: displayWidth) else { return false }
         // as many pixels as the card gets on the display (bounded: a foveated display is rasterized at up to 6000 pixels across)
         let w = min(at.pixels & ~1, 1600), h = Int(Float(w) * Self.heightMeters / Self.widthMeters) & ~1

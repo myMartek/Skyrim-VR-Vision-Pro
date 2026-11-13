@@ -147,6 +147,9 @@ Read in the fork `https://github.com/myMartek/Klepton` at tag `toolchain-890` (S
 | A foveated drawable with the render-quality ceiling, set only together with foveation; the running quality only where a ceiling was configured; a pass into the drawable sets the eye's rate map and viewport | `KleptonCompositor.swift` `KleptonStageConfiguration.makeConfiguration`, `applyRenderQuality`, `encodeViews` (`pass.rasterizationRateMap`) | `VXApp.swift` `VXLayerConfiguration`, `VXOverlay.swift` `VXDisplay`, `src/native_vr_present.m` `vx_xros_native_set_eye_raster`; one texture an eye (dedicated layout) with one map a view, no vertex amplification needed; setting `vxrt.foveation` (default on, `VXRT_FOVEATION`) |
 | A base resolution for the game's picture that does not follow the drawable ("Max resolution per eye", `KleptonEyeMax.swift`) | idea only | `VXSettings.baseSize`, `vxrt.baseResolution` (standard 2048, 2560 to 4096; `VXRT_BASE_RESOLUTION`): the width offered to `vx_xros_fixture_offer`, height from the eye's field of view |
 
+| The GPU's working time for the process (a completed handler on every committed command buffer, spans merged) and the count of shaders and pipeline states compiled or fetched | `runtime/gfx/kl_mtl_busy.m` (SHA-256 of the fork's copy at `toolchain-890`: see the file's header) | `VXRuntime/xros/app/Sources/VXGpuBusy.m`: **copied** under this app's names, without the logic-operation part; installed when the panel is first shown |
+| The panel's size and place (0.338 m wide at 1.2 m, middle at -0.05, 0.101 in the head's frame) | `KleptonMetrics.swift` `panelSize`, `KleptonCompositor.swift` (the panel's pose) | `VXStatsPanel.swift` |
+
 Not adopted: play area and room measuring, the frame-rate picker, frame generation, the tap of Create + Options (MetalFX on and off).
 
 The old "Display quality" setting (`VXRT_RENDER_QUALITY` as a slider) is gone from the settings: without foveation Compositor Services

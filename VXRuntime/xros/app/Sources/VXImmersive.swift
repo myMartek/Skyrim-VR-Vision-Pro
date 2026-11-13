@@ -780,6 +780,7 @@ final class VXImmersiveRenderer: @unchecked Sendable {
 #endif
         cleared = 0
         let framesNow = framesSecond
+        fields += ",\"thermal\":\(ProcessInfo.processInfo.thermalState.rawValue)"   // (0 nominal .. 3 critical: a display that drops its rate may be a warm headset)
         fields += ",\"predict_horizon_ms\":\(String(format: "%.1f", horizon * 1000)),\"predict_nil\":\(predNil),\"age_ema_ms\":\(String(format: "%.1f", vx_xros_immersive_age_ema() * 1000))"
         fields += ",\"presentation_interval_ms\":\(String(format: "%.2f", presentationIntervalCount > 0 ? presentationIntervalSum / Double(presentationIntervalCount) * 1000 : 0)),\"frame_total_ms_max\":\(String(format: "%.2f", fixtureMsMax))"
         presentationIntervalSum = 0; presentationIntervalCount = 0; fixtureMsMax = 0

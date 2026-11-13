@@ -1,8 +1,8 @@
 // The performance panel's drawing, from Klepton (MIT, Copyright (c) 2026 Max Thomas and contributors; fork https://github.com/myMartek/Klepton
 // tag toolchain-890, visionos/Sources/KleptonMetrics.swift; license text third_party/klepton_openxr/LICENSE), so that the panel reads the same in
 // this app as in every game AVP Play builds with Klepton. Unchanged but for the places marked "VX": the "Shaders" row and graph are left out
-// where the sample has no shader counts (compiles < 0: this runtime ships its shaders compiled). Where the samples come from and how the
-// panel gets into the view is VXStatsPanel.swift.
+// where a sample has no shader counts (compiles < 0). Where the samples come from and how the panel gets into the view is
+// VXStatsPanel.swift.
 //
 import CoreGraphics
 import CoreText
