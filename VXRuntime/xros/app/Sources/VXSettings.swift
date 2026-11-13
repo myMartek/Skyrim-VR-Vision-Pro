@@ -232,9 +232,15 @@ final class VXSettings: ObservableObject {
     static let sharpenKey = "vxrt.sharpen"
     static let renderQualityKey = "vxrt.renderQuality"
     static let plainResampleKey = "vxrt.plainResample"
-    /// The display qualities offered (VXDisplay.requestedQuality; 1.0 is the highest and the default). The picture is drawn into the
+    /// The display qualities offered (VXDisplay.requestedQuality; 1.0 is the highest). The picture is drawn into the
     /// display at this share of its finest resolution, on every display frame: up to 100 times a second, whatever the game's own rate.
     static let displayQualities: [Double] = [1.0, 0.8, 0.65]
+    /// What a new player starts with where nothing is stored and the launch says nothing: the picture settings found good in play on an
+    /// M5 headset (2026-11-13). A sharp base picture, which foveated rendering in the game's passes and a light presentation pay for.
+    static let displayQualityDefault = 0.65
+    static let plainResampleDefault = true
+    static let foveatedRenderingDefault = VXFoveatedRendering.high
+    static let baseResolutionDefault = 3072
     static let edgeMaskKey = "vxrt.edgeMask"
     static let graphicsKey = "vxrt.graphics"
     static let maxRateKey = "klepton.maxRate"       // Klepton's key and values (KleptonTuning.swift, KleptonRendering.maxRate)
@@ -242,7 +248,7 @@ final class VXSettings: ObservableObject {
     static let foveatedRenderingKey = "vxrt.foveatedRendering"
     static let baseResolutionKey = "vxrt.baseResolution"
     /// The base resolutions offered: 0 is the standard (the display's own picture without foveation, 2048 with it), the others the width
-    /// of each eye's picture in pixels; its height follows the display's shape.
+    /// of each eye's picture in pixels; its height follows the display's shape. A new player starts with `baseResolutionDefault`.
     static let baseResolutions = [0, 2048, 2560, 3072, 3584, 4096]
     static let baseResolutionStandard = 2048
     static let statsPanelKey = "vxrt.statsCard"
@@ -274,14 +280,14 @@ final class VXSettings: ObservableObject {
             if let v = sharpen { defaults.set(v, forKey: Self.sharpenKey) } else { defaults.removeObject(forKey: Self.sharpenKey) }
         }
     }
-    // The compositor's render quality (VXRT_RENDER_QUALITY, 0...1: the size of the drawable); nil = the system's default (next launch).
-    // How the finished picture is resampled into the display (src/native_vr_present.m): false, the default, the 5-tap Catmull-Rom filter
-    // that keeps repeated frames equally sharp; true the plain bilinear one, a fifth of the samples. Next launch.
-    @Published var plainResample: Bool = false { didSet { if !suppress { defaults.set(plainResample, forKey: Self.plainResampleKey) } } }
-    /// The offered display quality nearest to the stored one (nil: the highest).
+    // The compositor's render quality (VXRT_RENDER_QUALITY, 0...1: the size of the drawable); nil = nothing chosen: `displayQualityDefault` (next launch).
+    // How the finished picture is resampled into the display (src/native_vr_present.m): false the 5-tap Catmull-Rom filter that keeps
+    // repeated frames equally sharp; true the plain bilinear one, a fifth of the samples (`plainResampleDefault`). Next launch.
+    @Published var plainResample: Bool = VXSettings.plainResampleDefault { didSet { if !suppress { defaults.set(plainResample, forKey: Self.plainResampleKey) } } }
+    /// The offered display quality nearest to the stored one (nil: the default).
     var displayQuality: Double {
-        get { let q = renderQuality ?? 1.0; return Self.displayQualities.min { abs($0 - q) < abs($1 - q) } ?? 1.0 }
-        set { renderQuality = newValue >= 0.999 ? nil : newValue }
+        get { let q = renderQuality ?? Self.displayQualityDefault; return Self.displayQualities.min { abs($0 - q) < abs($1 - q) } ?? Self.displayQualityDefault }
+        set { renderQuality = newValue }       // every choice is stored, the highest too: nothing stored means the default, which is not the highest
     }
     @Published var renderQuality: Double? {
         didSet {
@@ -294,14 +300,14 @@ final class VXSettings: ObservableObject {
     // Whether the display's picture is foveated: sharp where the eye looks, coarser at the edge, which is what lets the system give the
     // app its high-resolution picture at all (CompositorServices accepts a higher render quality only with foveation). Next launch.
     @Published var foveation: Bool { didSet { if !suppress { defaults.set(foveation, forKey: Self.foveationKey) } } }
-    // Foveated rendering in the game's passes: off unless chosen (env VXRT_FOVE, the saved choice, Info.plist VXFoveatedRenderingDefault). Next launch.
+    // Foveated rendering in the game's passes: env VXRT_FOVE, the saved choice, Info.plist VXFoveatedRenderingDefault, else `foveatedRenderingDefault`. Next launch.
     @Published var foveatedRendering: VXFoveatedRendering { didSet { if !suppress { defaults.set(foveatedRendering.rawValue, forKey: Self.foveatedRenderingKey) } } }
     // The base resolution: the width of the picture each eye is drawn for, of which Resolution is a share and which MetalFX enlarges to
     // (0 = standard). Independent of the display's own picture, as "Max resolution per eye" is in Klepton's games. Next launch.
     @Published var baseResolution: Int {
         didSet {
             guard !suppress else { return }
-            if baseResolution > 0 { defaults.set(baseResolution, forKey: Self.baseResolutionKey) } else { defaults.removeObject(forKey: Self.baseResolutionKey) }
+            defaults.set(baseResolution, forKey: Self.baseResolutionKey)       // the standard (0) too: nothing stored means the default, which is not the standard
         }
     }
     // Whether the performance panel is in the view from the start. Create + Options held for a second shows and hides it at any time
@@ -431,17 +437,17 @@ final class VXSettings: ObservableObject {
         if let v = Self.flag(environment["VXRT_FOVEATION"]) { fove = v }
         foveation = fove
         // The plain (bilinear) resample of the finished picture instead of the 5-tap one: env VXRT_REPROJ_FILTER, then the saved choice.
-        var plain = defaults.bool(forKey: Self.plainResampleKey)
+        var plain = (defaults.object(forKey: Self.plainResampleKey) as? Bool) ?? Self.plainResampleDefault
         if let e = environment["VXRT_REPROJ_FILTER"] { plain = e == "bilinear" }
         plainResample = plain
-        var fr: VXFoveatedRendering = (info["VXFoveatedRenderingDefault"] as? String).flatMap(VXFoveatedRendering.init(rawValue:)) ?? .off
+        var fr: VXFoveatedRendering = (info["VXFoveatedRenderingDefault"] as? String).flatMap(VXFoveatedRendering.init(rawValue:)) ?? Self.foveatedRenderingDefault
         if let st = defaults.string(forKey: Self.foveatedRenderingKey), let v = VXFoveatedRendering(rawValue: st) { fr = v }
         if let e = environment["VXRT_FOVE"] { fr = VXFoveatedRendering(rawValue: e) ?? .off }
         foveatedRendering = fr
-        var base = (info["VXBaseResolutionDefault"] as? String).flatMap(Int.init) ?? 0
+        var base = (info["VXBaseResolutionDefault"] as? String).flatMap(Int.init) ?? Self.baseResolutionDefault
         if let v = defaults.object(forKey: Self.baseResolutionKey) as? Int { base = v }
         if let v = environment["VXRT_BASE_RESOLUTION"].flatMap(Int.init) { base = v }
-        baseResolution = Self.baseResolutions.contains(base) ? base : 0
+        baseResolution = Self.baseResolutions.contains(base) ? base : Self.baseResolutionDefault
         var stats = (info["VXStatsCardDefault"] as? String).map { $0 == "1" } ?? false
         if let v = defaults.object(forKey: Self.statsPanelKey) as? Bool { stats = v }
         if let v = Self.flag(environment["VXRT_STATS_CARD"] ?? environment["KL_STATS_CARD"]) { stats = v }

@@ -13,7 +13,7 @@ func map(_ s: VXSettings) -> [String: String] { Dictionary(uniqueKeysWithValues:
         var d = fresh()
         var s = VXSettings(defaults: d, info: [:], environment: [:])
         check(s.renderScale == 0.75 && s.latency == .smart && s.upscale == .metalfx && !s.showHands && !s.startAutomatically && s.predictMs == nil && s.stageEyeHeight == nil, "defaults")
-        check(map(s) == ["VXRT_RENDER_SCALE": "0.75", "VXRT_UPSCALE": "metalfx", "VXRT_GATE": "smart", "VXRT_VISMASK": "on", "VXRT_VISMASK_SHAPE": VXEdgeMask.slightShape], "default exports \(map(s))")
+        check(map(s) == ["VXRT_RENDER_SCALE": "0.75", "VXRT_UPSCALE": "metalfx", "VXRT_GATE": "smart", "VXRT_VISMASK": "on", "VXRT_VISMASK_SHAPE": VXEdgeMask.slightShape, "VXRT_FOVE": "high", "VXRT_REPROJ_FILTER": "bilinear"], "default exports \(map(s))")
 
         // persistence under Klepton's keys, read back by a new store
         s.renderScale = 0.85; s.latency = .throughput; s.upscale = .bilinear; s.showHands = true; s.startAutomatically = true; s.predictMs = 40; s.stageEyeHeight = 1.2
@@ -21,7 +21,7 @@ func map(_ s: VXSettings) -> [String: String] { Dictionary(uniqueKeysWithValues:
         check(d.data(forKey: "klepton.chroma").flatMap { try? JSONDecoder().decode(VXHandsBlob.self, from: $0) }?.handMatting == true, "klepton.chroma blob stored")
         let s2 = VXSettings(defaults: d, info: [:], environment: [:])
         check(s2.renderScale == 0.85 && s2.latency == .throughput && s2.upscale == .bilinear && s2.showHands && s2.startAutomatically && s2.predictMs == 40 && s2.stageEyeHeight == 1.2, "persisted values read back")
-        check(map(s2) == ["VXRT_RENDER_SCALE": "0.85", "VXRT_UPSCALE": "bilinear", "VXRT_GATE": "off", "VXRT_PREDICT_MS": "40", "VXRT_STAGE_EYE_HEIGHT": "1.20", "VXRT_VISMASK": "on", "VXRT_VISMASK_SHAPE": VXEdgeMask.slightShape], "exports \(map(s2))")
+        check(map(s2) == ["VXRT_RENDER_SCALE": "0.85", "VXRT_UPSCALE": "bilinear", "VXRT_GATE": "off", "VXRT_PREDICT_MS": "40", "VXRT_STAGE_EYE_HEIGHT": "1.20", "VXRT_VISMASK": "on", "VXRT_VISMASK_SHAPE": VXEdgeMask.slightShape, "VXRT_FOVE": "high", "VXRT_REPROJ_FILTER": "bilinear"], "exports \(map(s2))")
         s2.predictMs = nil; s2.stageEyeHeight = nil
         check(d.object(forKey: "vxrt.predictMs") == nil && d.object(forKey: "vxrt.stageEyeHeight") == nil, "auto removes the stored value")
 
@@ -115,7 +115,7 @@ func map(_ s: VXSettings) -> [String: String] { Dictionary(uniqueKeysWithValues:
         check(!VXSettings(defaults: d, info: [:], environment: [:]).showHands, "broken blob falls back to the default")
 
         // applying: never replaces a variable the launch set
-        setenv("VXRT_GATE", "one", 1); unsetenv("VXRT_RENDER_SCALE"); unsetenv("VXRT_VISMASK"); unsetenv("VXRT_VISMASK_SHAPE")
+        setenv("VXRT_GATE", "one", 1); unsetenv("VXRT_RENDER_SCALE"); unsetenv("VXRT_VISMASK"); unsetenv("VXRT_VISMASK_SHAPE"); unsetenv("VXRT_FOVE"); unsetenv("VXRT_REPROJ_FILTER")
         s = VXSettings(defaults: fresh(), info: [:], environment: [:])
         let r = s.applyEnvironment()
         check(getenv("VXRT_RENDER_SCALE").map { String(cString: $0) } == "0.75" && String(cString: getenv("VXRT_GATE")) == "one", "applyEnvironment keeps launch env")
@@ -148,21 +148,21 @@ func map(_ s: VXSettings) -> [String: String] { Dictionary(uniqueKeysWithValues:
         // foveated display: on by default, saved, env wins; the base resolution: standard by default, only offered values are kept
         let fd = fresh()
         let f1 = VXSettings(defaults: fd, info: [:], environment: [:])
-        check(f1.foveation && f1.baseResolution == 0, "foveation on, base standard by default")
-        f1.foveation = false; f1.baseResolution = 3072
+        check(f1.foveation && f1.baseResolution == 3072 && fd.object(forKey: "vxrt.baseResolution") == nil, "foveation on, base 3072 by default")
+        f1.foveation = false; f1.baseResolution = 2560
         let f2 = VXSettings(defaults: fd, info: [:], environment: [:])
-        check(!f2.foveation && f2.baseResolution == 3072, "foveation and base persisted")
+        check(!f2.foveation && f2.baseResolution == 2560, "foveation and base persisted")
         check(VXSettings(defaults: fd, info: [:], environment: ["VXRT_FOVEATION": "1", "VXRT_BASE_RESOLUTION": "2560"]).foveation, "foveation env wins")
-        // foveated rendering in the game's passes: off by default, the choice persists and is exported, the launch's VXRT_FOVE wins
-        check(f1.foveatedRendering == .off && map(f1)["VXRT_FOVE"] == nil, "foveated rendering off by default")
+        // foveated rendering in the game's passes: high by default, the choice persists and is exported, the launch's VXRT_FOVE wins
+        check(f1.foveatedRendering == .high && map(f1)["VXRT_FOVE"] == "high", "foveated rendering high by default")
         f1.foveatedRendering = .medium
         check(map(f1)["VXRT_FOVE"] == "medium", "foveated rendering exported \(map(f1))")
         check(VXSettings(defaults: fd, info: [:], environment: [:]).foveatedRendering == .medium, "foveated rendering persisted")
         check(VXSettings(defaults: fd, info: [:], environment: ["VXRT_FOVE": "high"]).foveatedRendering == .high, "foveated rendering env wins")
         check(VXSettings(defaults: fd, info: ["VXFoveatedRenderingDefault": "low"], environment: ["VXRT_FOVE": "off"]).foveatedRendering == .off, "foveated rendering env off wins")
         f1.foveatedRendering = .off
-        // display quality (one of the offered values; the highest stores nothing) and the plain resample
-        check(f1.displayQuality == 1.0 && !f1.plainResample && map(f1)["VXRT_RENDER_QUALITY"] == nil && map(f1)["VXRT_REPROJ_FILTER"] == nil, "display quality high, sharp filter by default")
+        // display quality (one of the offered values, every choice stored) and the plain resample
+        check(f1.displayQuality == 0.65 && f1.renderQuality == nil && f1.plainResample && map(f1)["VXRT_RENDER_QUALITY"] == nil && map(f1)["VXRT_REPROJ_FILTER"] == "bilinear", "display quality low, plain filter by default")
         f1.displayQuality = 0.8; f1.plainResample = true
         check(map(f1)["VXRT_RENDER_QUALITY"] == "0.80" && map(f1)["VXRT_REPROJ_FILTER"] == "bilinear", "display quality and filter exported \(map(f1))")
         let f3 = VXSettings(defaults: fd, info: [:], environment: [:])
@@ -170,11 +170,13 @@ func map(_ s: VXSettings) -> [String: String] { Dictionary(uniqueKeysWithValues:
         check(VXSettings(defaults: fd, info: [:], environment: ["VXRT_RENDER_QUALITY": "0.7", "VXRT_REPROJ_FILTER": "bicubic"]).displayQuality == 0.65, "a stored or given quality shows as the nearest offered one")
         check(!VXSettings(defaults: fd, info: [:], environment: ["VXRT_REPROJ_FILTER": "bicubic"]).plainResample, "filter env wins")
         f1.displayQuality = 1.0; f1.plainResample = false
-        check(f1.renderQuality == nil && map(f1)["VXRT_RENDER_QUALITY"] == nil, "the highest quality stores nothing")
+        check(f1.renderQuality == 1.0 && map(f1)["VXRT_RENDER_QUALITY"] == "1.00" && map(f1)["VXRT_REPROJ_FILTER"] == nil, "the highest quality and the sharp filter are stored choices")
+        let f4 = VXSettings(defaults: fd, info: [:], environment: [:])
+        check(f4.displayQuality == 1.0 && !f4.plainResample, "stored choices beat the defaults")
         check(VXSettings(defaults: fd, info: [:], environment: ["VXRT_BASE_RESOLUTION": "2560"]).baseResolution == 2560, "base env wins")
-        check(VXSettings(defaults: fresh(), info: [:], environment: ["VXRT_BASE_RESOLUTION": "1234"]).baseResolution == 0, "an unknown base is the standard")
+        check(VXSettings(defaults: fresh(), info: [:], environment: ["VXRT_BASE_RESOLUTION": "1234"]).baseResolution == 3072, "an unknown base is the default")
         f2.baseResolution = 0
-        check(fd.object(forKey: "vxrt.baseResolution") == nil, "standard removes the stored base")
+        check(fd.object(forKey: "vxrt.baseResolution") as? Int == 0 && VXSettings(defaults: fd, info: [:], environment: [:]).baseResolution == 0, "the standard base is a stored choice")
         // the size the game is told: the texture itself without foveation and without a choice; otherwise the chosen width, square pixels
         // over the eye's field of view
         check(VXSettings.baseSize(choice: 0, foveated: false, texture: (2048, 1984), fieldOfView: (2.2, 2.0)) == (2048, 1984), "base: unchanged without foveation")
