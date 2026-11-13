@@ -78,6 +78,46 @@ int main(void) {
     n = GetPrivateProfileStringW(NULL, NULL, L"", wout, 256, L"C:\\vxini\\game.ini");
     CHECK(n == 16 && !memcmp(wout, L"General\0Archive\0\0", (n + 1) * 2));
 
+    // WritePrivateProfileString is kept: a value replaced in place, a new key behind its section's last line, a new
+    // section at the end, a key and a section removed; comments, order and the other lines untouched.
+    const char *g = "C:\\vxini\\game.ini";
+    CHECK(WritePrivateProfileStringA("general", "UCOUNT", "43", g));
+    CHECK(GetPrivateProfileIntA("General", "uCount", 5, g) == 43);
+    CHECK(WritePrivateProfileStringA("General", "sNew", "x y", g));
+    n = GetPrivateProfileStringA("General", "sNew", "", out, sizeof out, g);
+    CHECK(n == 3 && !strcmp(out, "x y"));
+    n = GetPrivateProfileStringA("General", NULL, "", out, sizeof out, g);
+    CHECK(n == 10 + 7 + 8 + 7 + 5 && !memcmp(out, "sLanguage\0UCOUNT\0sQuoted\0sEmpty\0sNew\0\0", n + 1));
+    n = GetPrivateProfileStringA("Archive", "sLanguage", "", out, sizeof out, g);
+    CHECK(n == 5 && !strcmp(out, "other"));                                          // the other section's key of the same name stays
+    CHECK(WritePrivateProfileStringA("VR", "bOneTimeCalibrationCompleted", "1", g));
+    CHECK(GetPrivateProfileIntA("VR", "bOneTimeCalibrationCompleted", 0, g) == 1);
+    CHECK(WritePrivateProfileStringW(L"VR", L"fHeight", L"1.75", L"C:\\vxini\\game.ini"));
+    n = GetPrivateProfileStringA(NULL, NULL, "", out, sizeof out, g);
+    CHECK(n == 19 && !memcmp(out, "General\0Archive\0VR\0\0", n + 1));
+    n = GetPrivateProfileSectionA("VR", out, sizeof out, g);
+    CHECK(n == 31 + 13 && !memcmp(out, "bOneTimeCalibrationCompleted=1\0fHeight=1.75\0\0", n + 1));
+    CHECK(WritePrivateProfileStringA("General", "sNew", NULL, g));
+    n = GetPrivateProfileStringA("General", "sNew", "gone", out, sizeof out, g);
+    CHECK(n == 4 && !strcmp(out, "gone"));
+    CHECK(WritePrivateProfileStringA("VR", NULL, NULL, g));
+    n = GetPrivateProfileStringA(NULL, NULL, "", out, sizeof out, g);
+    CHECK(n == 16 && !memcmp(out, "General\0Archive\0\0", n + 1));
+    {
+        char raw[1024] = "";
+        HANDLE f = CreateFileA(g, GENERIC_READ, 0, NULL, OPEN_EXISTING, 0, NULL);
+        DWORD got = 0;
+        CHECK(f != INVALID_HANDLE_VALUE && ReadFile(f, raw, sizeof raw - 1, &got, NULL));
+        CloseHandle(f);
+        raw[got] = 0;
+        CHECK(strstr(raw, "; settings\r\n[General]\r\nsLanguage = ENGLISH \r\nUCOUNT=43\r\nsQuoted=\"two words\"\r\n;sHidden=no\r\nsEmpty=\r\n[Archive]\r\n") != NULL);
+        CHECK(strstr(raw, "sText=abc\r\n") != NULL && !strstr(raw, "[VR]"));
+    }
+    // a file that is not there yet is made; in a folder that is not there the call fails
+    CHECK(WritePrivateProfileStringA("VRInput", "bDirectMovementWithWands", "1", "C:\\vxini\\prefs.ini"));
+    CHECK(GetPrivateProfileIntA("VRInput", "bDirectMovementWithWands", 0, "C:\\vxini\\prefs.ini") == 1);
+    CHECK(!WritePrivateProfileStringA("A", "b", "c", "C:\\vxini\\nofolder\\x.ini"));
+
     if (failures) { printf("%d failures\n", failures); return 1; }
     printf("ini ok\n");
     return 0;

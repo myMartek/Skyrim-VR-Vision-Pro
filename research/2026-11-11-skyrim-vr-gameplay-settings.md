@@ -28,6 +28,12 @@ an animated snap and whether `fGamepadLookAngleSnapSmoothingSpeed` also drives c
 
 ## Interaction with the game's own saved choice [code]
 
+**Update 2026-11-13:** the writes are kept now (`VXRuntime/src/client.c`, "WritePrivateProfileString: kept"; `tests/ini.c`). Seen on the Mac: leaving the game's
+settings menu writes 151 keys into `My Games/Skyrim VR/SkyrimPrefs.ini`, `[VRInput] bDirectMovementWithWands` among them, so the game's own choice of movement and
+turning persists. A key the launcher or the preset overrides is not written (the game read the override's value, not the file's). And `[VR]
+bOneTimeCalibrationCompleted` reads as 1 once the Saves folder holds a save (`VXRT_SKYRIM_SETUP=game` turns that off): on the headset the game otherwise showed its
+first-launch VR setup at every start, because nothing had ever stored that flag. The first two bullets below describe the state before this.
+
 * The game's in-game choice is saved with `WritePrivateProfileString` into SkyrimPrefs.ini. Our layer does not keep those writes (`VXRuntime/src/extras.c:825-831`,
   logged "not kept"), so on the device the game's own choice does not persist between launches at all, and a stored launcher choice does not fight it.
 * Even so the design is tri-state: "Game default" writes nothing, so the key comes from the file exactly as before. A key is overridden only when the player picked it

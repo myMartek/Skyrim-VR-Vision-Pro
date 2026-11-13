@@ -7,6 +7,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <dirent.h>
+#include <pthread.h>
 #include "vx.h"
 
 // ---- kernel32 -------------------------------------------------------------------------------------------------------------------
@@ -110,8 +112,8 @@ static WINAPI BOOL GetVolumeNameForVolumeMountPointW(const WCHAR *mount, WCHAR *
     return 0;
 }
 // ---- .ini files (GetPrivateProfile*) -----------------------------------------------------------------------------------
-// Read for real: a program's settings (Skyrim's [Archive] list, ...) come from its .ini files. Read only here: writes
-// (WritePrivateProfileString) are still not kept. A name without a directory is the Windows directory's, as on Windows.
+// Read for real: a program's settings (Skyrim's [Archive] list, ...) come from its .ini files, and what it writes
+// (WritePrivateProfileString, below) is kept in them. A name without a directory is the Windows directory's, as on Windows.
 // Sections and keys compare case-insensitively; ';' lines are comments; a value's surrounding blanks are dropped and one
 // pair of matching quotes around it too.
 static char *ini_read(const char *name) {
@@ -197,7 +199,7 @@ static const ini_set ini_watch[] = {
     { "VRInput", "bGamepadLookAngleSnapping", "" }, { "VRInput", "bGamepadLookAngleSnapSmoothing", "" }, { "VRInput", "fGamepadLookAngleSnapAmount", "" },
     { "VRInput", "fGamepadLookAngleSnapSmoothingSpeed", "" }, { "VRInput", "bDirectMovementWithWands", "" }, { "VRInput", "bUseWandDirectionalMovement", "" },
     { "VRInput", "bLeftHandedMode", "" }, { "Controls", "bAlwaysRunByDefault", "" },
-    { "VRComfort", "bComfortModeWhileTurning", "" }, { "VRComfort", "bComfortModeWhileMoving", "" }, { "VRComfort", "fComfortModeSize", "" }, { "VR", "bComfortSneak", "" },
+    { "VRComfort", "bComfortModeWhileTurning", "" }, { "VRComfort", "bComfortModeWhileMoving", "" }, { "VRComfort", "fComfortModeSize", "" }, { "VR", "bComfortSneak", "" }, { "VR", "bOneTimeCalibrationCompleted", "" },
     { "VR", "fCharacterHeightOffset", "" }, { "VR", "fDefaultEyeHeight", "" }, { "VRInput", "bShowHandsWhileSheathed", "" }, { "VR", "bAlwaysShowHands", "" },
     { "Interface", "bGeneralSubtitles", "" }, { "Interface", "bDialogueSubtitles", "" }, { "Interface", "bShowSubtitleSpeakerName", "" },
     { "Interface", "bShowCompass", "" }, { "Interface", "bShowCrosshair", "" }, { "Interface", "bShowHUDMessages", "" },
@@ -217,6 +219,34 @@ static int ini_is_skyrim_file(const char *file) {
     if ((t = strrchr(b, '/'))) b = t + 1;
     return !strncasecmp(b, "skyrim", 6);
 }
+// Skyrim VR's first-launch VR setup. Without "[VR] bOneTimeCalibrationCompleted=1" in SkyrimPrefs.ini the game does not
+// open its main menu after the logos but loads its setup room, at every start until the player has gone through it to
+// the end. A player who already has saved games has no use for it (and from that room a save can only be loaded
+// through the journal's system page): once the Saves folder beside the .ini file holds a save, the setup counts as
+// done, whatever the file says, and the game starts at its main menu with Continue and Load. With no save the game's
+// own first start is as the game makes it. VXRT_SKYRIM_SETUP=game: never counted as done here. Looked at once a run.
+static int ini_saves_exist(const char *file) {
+    static int known = -1;
+    if (known >= 0) return known;
+    const char *e = getenv("VXRT_SKYRIM_SETUP");
+    if (e && !strcmp(e, "game")) return known = 0;
+    char win[1024], path[1024];
+    snprintf(win, sizeof win, "%s", file);
+    char *cut = strrchr(win, '\\');
+    // (only the settings in the player's own folder, "...\\My Games\\Skyrim VR\\SkyrimPrefs.ini": the game asks the .ini files
+    // beside its exe for the same key first, and the saves are not there)
+    if (!cut || !strcasestr(win, "\\My Games\\")) return 0;
+    snprintf(cut, sizeof win - (size_t)(cut - win), "\\Saves");
+    known = 0;
+    DIR *d = vx_unix_path(win, path, sizeof path) ? opendir(path) : NULL;
+    for (struct dirent *de; d && (de = readdir(d));) {
+        size_t n = strlen(de->d_name);
+        if (n > 4 && !strcasecmp(de->d_name + n - 4, ".ess")) { known = 1; break; }
+    }
+    if (d) closedir(d);
+    vx_log("skyrim_ini: %s in %s: the first-launch VR setup %s", known ? "a saved game" : "no saved game", win, known ? "counts as done (main menu)" : "is the game's to show");
+    return known;
+}
 // The environment's VXRT_INI_SET, then the preset: the overriding value for [app] key, or NULL; *source says which.
 static const char *ini_override(const char *file, const char *app, const char *key, const char **source, char *buf, size_t cap) {
     if (!ini_is_skyrim_file(file) || !app || !key) return NULL;
@@ -233,6 +263,7 @@ static const char *ini_override(const char *file, const char *app, const char *k
     if (ini_preset_name())
         for (size_t i = 0; i < sizeof preset_p2 / sizeof preset_p2[0]; i++)
             if (!strcasecmp(app, preset_p2[i].section) && !strcasecmp(key, preset_p2[i].key)) { *source = "preset p2"; return preset_p2[i].value; }
+    if (!strcasecmp(app, "VR") && !strcasecmp(key, "bOneTimeCalibrationCompleted") && ini_saves_exist(file)) { *source = "a saved game exists"; return "1"; }
     return NULL;
 }
 static void ini_report(const char *file, const char *app, const char *key, const char *value, const char *source) {
@@ -295,6 +326,110 @@ static DWORD ini_string(const char *app, const char *key, const char *def, char 
     if (n >= cap) n = cap - 1;
     memcpy(out, s, n); out[n] = 0;
     return n;
+}
+// ---- WritePrivateProfileString: kept --------------------------------------------------------------------------------------------
+// [app] key=value is set in the file, which is made when it is not there (in a folder that is: as on Windows, a missing
+// folder fails the call); a NULL value removes the key, a NULL key the whole section. Everything else in the file stays
+// as it is: comments, order, the other lines' endings. A new key goes behind the last line of its section, a new section
+// to the end of the file; new lines end in CRLF. The file is replaced in one step (written beside it, then renamed).
+//
+// A key the launcher overrides (ini_override: the preset, VXRT_INI_SET) is not written. The program read the override's
+// value, not the file's, so what it writes back is the override too, and kept it would become the file's own value for
+// the day the override is gone.
+//
+// Why it matters: Skyrim VR keeps its settings this way and no other (SkyrimPrefs.ini). Dropped, the game found no
+// "[VR] bOneTimeCalibrationCompleted=1" at any start and ran its first-launch VR setup every time, and the movement
+// and turning chosen there or in its menu were gone with the process.
+typedef struct { char *s; size_t n, cap; } ini_out;
+static void ini_put(ini_out *o, size_t at, const char *text, size_t n) {
+    if (o->n + n + 1 > o->cap) { o->cap = (o->n + n + 1) * 2 + 256; o->s = realloc(o->s, o->cap); }
+    memmove(o->s + at + n, o->s + at, o->n - at);
+    memcpy(o->s + at, text, n);
+    o->n += n; o->s[o->n] = 0;
+}
+static pthread_mutex_t g_ini_write_lock = PTHREAD_MUTEX_INITIALIZER;
+static int ini_write(const char *file, const char *app, const char *key, const char *value) {
+    if (!file || !*file) { vx_set_last_error(87); return 0; }
+    if (!app) return 1;                                             // (Windows: flush its cache of the file; there is none here)
+    static int trace = -1;                                          // VXRT_TRACE_FILES: what the program writes (which settings it keeps between runs)
+    if (trace < 0) trace = getenv("VXRT_TRACE_FILES") != NULL;
+    char ov[256]; const char *src = NULL;
+    if (key && ini_override(file, app, key, &src, ov, sizeof ov)) {
+        if (trace) vx_log("WritePrivateProfileString(%s) [%s] %s=%s (not kept: %s sets it)", file, app, key, value ? value : "(key deleted)", src);
+        return 1;
+    }
+    char win[1024], path[1024];
+    if (!strpbrk(file, "\\/:")) snprintf(win, sizeof win, "C:\\windows\\%s", file); else snprintf(win, sizeof win, "%s", file);
+    pthread_mutex_lock(&g_ini_write_lock);
+    char *text = ini_read(file);
+    ini_out o = { NULL, 0, 0 };
+    ini_put(&o, 0, "", 0);
+    int in = 0, done = 0;
+    size_t tail = 0;                                                // behind the last line of [app] that is not blank
+    char entry[2600];
+    int entry_n = key && value ? snprintf(entry, sizeof entry, "%s=%s\r\n", key, value) : 0;
+    if (entry_n >= (int)sizeof entry) entry_n = (int)sizeof entry - 1;
+    for (const char *p = text ? text : ""; *p;) {
+        const char *e = p; while (*e && *e != '\n') e++;
+        const char *next = *e ? e + 1 : e;
+        char line[2400]; size_t n = (size_t)(e - p); if (n >= sizeof line) n = sizeof line - 1;
+        memcpy(line, p, n); line[n] = 0;
+        while (n && line[n - 1] == '\r') line[--n] = 0;
+        ini_trim(line);
+        char *close = line[0] == '[' ? strchr(line, ']') : NULL;
+        if (close) {                                                // a section starts
+            if (in && key && value && !done) { ini_put(&o, tail, entry, (size_t)entry_n); done = 1; }
+            *close = 0;
+            in = !strcasecmp(line + 1, app);
+            if (!(in && !key)) { ini_put(&o, o.n, p, (size_t)(next - p)); if (in) tail = o.n; }
+        } else if (in) {
+            char *eq = line[0] != ';' ? strchr(line, '=') : NULL;
+            if (!key) { p = next; continue; }                       // (the section goes: its lines with it)
+            if (eq) { *eq = 0; ini_trim(line); }
+            if (eq && !strcasecmp(line, key)) {                     // the key's line: replaced, or dropped (deleted, or a second one)
+                if (value && !done) { ini_put(&o, o.n, entry, (size_t)entry_n); done = 1; }
+                tail = o.n;
+            } else {
+                ini_put(&o, o.n, p, (size_t)(next - p));
+                if (line[0] || eq) { if (o.s[o.n - 1] != '\n') ini_put(&o, o.n, "\r\n", 2); tail = o.n; }
+            }
+        } else ini_put(&o, o.n, p, (size_t)(next - p));
+        p = next;
+    }
+    if (key && value && !done) {
+        if (in) ini_put(&o, tail, entry, (size_t)entry_n);          // the file ends inside [app]
+        else {
+            char head[300];
+            if (o.n && o.s[o.n - 1] != '\n') ini_put(&o, o.n, "\r\n", 2);
+            int hn = snprintf(head, sizeof head, "[%s]\r\n", app);
+            ini_put(&o, o.n, head, (size_t)hn);
+            ini_put(&o, o.n, entry, (size_t)entry_n);
+        }
+    }
+    int ok = 0;
+    if (vx_unix_path_write(win, path, sizeof path, 0)) {
+        char tmp[1100];
+        snprintf(tmp, sizeof tmp, "%s.vxtmp", path);
+        FILE *f = fopen(tmp, "wb");
+        if (f) {
+            ok = fwrite(o.s, 1, o.n, f) == o.n;
+            ok = !fclose(f) && ok;
+            ok = ok && !rename(tmp, path);
+            if (!ok) unlink(tmp);
+        }
+    }
+    if (trace || !ok) vx_log("WritePrivateProfileString(%s) [%s] %s=%s (%s)", file, app, key ? key : "(section deleted)", value ? value : "(key deleted)", ok ? "kept" : "not written: the file could not be made");
+    free(o.s); free(text);
+    pthread_mutex_unlock(&g_ini_write_lock);
+    if (!ok) vx_set_last_error(3);                                  // ERROR_PATH_NOT_FOUND
+    return ok;
+}
+static WINAPI BOOL WritePrivateProfileStringA(const char *app, const char *key, const char *value, const char *file) { return ini_write(file, app, key, value); }
+static WINAPI BOOL WritePrivateProfileStringW(const WCHAR *app, const WCHAR *key, const WCHAR *value, const WCHAR *file) {
+    char *a = app ? vx_utf8_dup(app) : NULL, *k = key ? vx_utf8_dup(key) : NULL, *v = value ? vx_utf8_dup(value) : NULL, *f = file ? vx_utf8_dup(file) : NULL;
+    BOOL r = ini_write(f, a, k, v);
+    free(a); free(k); free(v); free(f);
+    return r;
 }
 static WINAPI DWORD GetPrivateProfileStringA(const char *app, const char *key, const char *def, char *out, DWORD cap, const char *file) {
     return ini_string(app, key, def, out, cap, file);
@@ -764,7 +899,7 @@ static const vx_export k32[] = {
     { "K32GetModuleFileNameExW", (void *)GetModuleFileNameExW }, { "K32GetModuleFileNameExA", (void *)GetModuleFileNameExA },
     VX_EXPORT(SetProcessShutdownParameters), VX_EXPORT(SetThreadErrorMode), VX_EXPORT(IsWow64Process), VX_EXPORT(GetBinaryTypeW),
     VX_EXPORT(GetVolumeInformationA), VX_EXPORT(GetVolumePathNameW), VX_EXPORT(GetVolumeNameForVolumeMountPointW),
-    VX_EXPORT(GetPrivateProfileStringA), VX_EXPORT(GetPrivateProfileIntA), VX_EXPORT(GetPrivateProfileIntW), VX_EXPORT(GetPrivateProfileSectionA), VX_EXPORT(GetPrivateProfileSectionW), VX_EXPORT(FoldStringW), VX_EXPORT(EnumResourceNamesW),
+    VX_EXPORT(GetPrivateProfileStringA), VX_EXPORT(WritePrivateProfileStringA), VX_EXPORT(WritePrivateProfileStringW), VX_EXPORT(GetPrivateProfileIntA), VX_EXPORT(GetPrivateProfileIntW), VX_EXPORT(GetPrivateProfileSectionA), VX_EXPORT(GetPrivateProfileSectionW), VX_EXPORT(FoldStringW), VX_EXPORT(EnumResourceNamesW),
     { "DebugActiveProcess", (void *)no_debugging }, { "DebugActiveProcessStop", (void *)no_debugging }, VX_EXPORT(GenerateConsoleCtrlEvent),
     { "K32EnumProcessModules", (void *)EnumProcessModules }, { "K32EnumProcessModulesEx", (void *)EnumProcessModulesEx },
     { "K32GetModuleBaseNameW", (void *)GetModuleBaseNameW }, { "K32GetModuleBaseNameA", (void *)GetModuleBaseNameA },
