@@ -116,6 +116,17 @@ class Client(Base):
         cdn = [h for h in Fake.hits if '/cdn/' in h[0]]
         self.assertEqual(len(cdn), 1); self.assertNotIn('apikey', cdn[0][1])      # the key never goes to the CDN
 
+    def test_download_with_the_key_says_how_far_it_is(self):
+        Fake.premium = True
+        err = io.StringIO()
+        with mock.patch.dict(os.environ, {'VXRT_NEXUS_EVENTS': '1'}), mock.patch('sys.stderr', err):
+            nexus.download('skyrimspecialedition', '7', '9', name='Main mod')
+            nexus.download('skyrimspecialedition', '7', '9', name='Main mod')
+        lines = [l for l in err.getvalue().splitlines() if l.startswith('@@nexus ')]
+        self.assertEqual(lines[0], '@@nexus progress|Main mod|0 %d' % len(ZIP))          # a line before the first byte, with the size
+        self.assertIn('@@nexus have|Main mod|downloaded with the Nexus key', lines)
+        self.assertEqual(lines[-1], '@@nexus have|Main mod|kept from before')            # the second call finds it there
+
     def test_non_premium_403_then_nxm(self):
         with self.assertRaises(nexus.NeedInput) as c: nexus.download('skyrimspecialedition', '7', '9')
         self.assertIn('Mod Manager Download', str(c.exception)); self.assertNotIn(KEY, str(c.exception))

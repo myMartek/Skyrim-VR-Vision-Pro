@@ -10,6 +10,7 @@ while it runs, and shows these lines in its own words (every other line is for t
     @@mods total|<n>                      n files belong to the chosen sets
     @@mods have|<name>|<how>              one is there (kept from before, picked up from Downloads, downloaded with the key)
     @@mods need|<name>|<page>             the player's turn: the page was opened in the browser, the Downloads folder is watched
+    @@mods progress|<name>|<here>|<all>   a download with the key: bytes here and in all (0: not known), about once a second
     @@mods done|<n>                       all there
     !! mods: <why>                        it stopped (exit 1 failed, 2 the player did not download a file in time)
 
@@ -89,6 +90,10 @@ def main(argv):
             if kind == "have" and name not in seen:
                 seen.add(name); have += 1
                 out("@@mods have|%s|%s" % (name, detail))
+            elif kind == "progress":
+                got, _, total = detail.partition(" ")
+                if not check and got.isdigit():
+                    out("@@mods progress|%s|%s|%s" % (name, got, total if total.isdigit() else "0"))
             elif kind == "need":
                 last_need = name
                 if not check:

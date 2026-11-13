@@ -303,7 +303,7 @@ def check_file(path, size=None, md5=None):
     return None
 
 
-def download(game, mod_id, file_id, nxm=None, md5=None, wait=0, progress=None):
+def download(game, mod_id, file_id, nxm=None, md5=None, wait=0, progress=None, name=None):
     """Fetch one file; returns dict(path, md5, size, verified_by). Skips the transfer when the file is already there and verifies."""
     key = api_key()
     if nxm:
@@ -323,6 +323,7 @@ def download(game, mod_id, file_id, nxm=None, md5=None, wait=0, progress=None):
         why = check_file(dest, size, want_md5)
         if why is None:
             print('nexus: %s is already here (checked: %s)' % (dest.name, how), file=sys.stderr)
+            event('have', name or dest.name, 'kept from before')
             return dict(path=str(dest), md5=md5_file(dest), size=dest.stat().st_size, verified_by=how)
         print('nexus: %s is there but %s; fetching again' % (dest.name, why), file=sys.stderr)
     try:
@@ -342,9 +343,14 @@ def download(game, mod_id, file_id, nxm=None, md5=None, wait=0, progress=None):
     h = hashlib.md5(); got = 0
     try:
         _, _, r = request(link, None)          # the CDN link is signed: the API key is not sent to it
+        said = time.monotonic()
+        event('progress', name or dest.name, '0 %d' % (size or 0))
         with r, open(part, 'wb') as f:
-            for b in iter(lambda: r.read(1 << 20), b''):
+            for b in iter(lambda: r.read(1 << 16), b''):       # (small reads: the progress lines come once a second on a slow line too)
                 f.write(b); h.update(b); got += len(b)
+                if time.monotonic() - said >= 1:
+                    said = time.monotonic()
+                    event('progress', name or dest.name, '%d %d' % (got, size or 0))
     except HttpFail as e:
         part.unlink(missing_ok=True)
         raise NexusError('the download server answered %s' % scrub(e))
@@ -362,7 +368,7 @@ def download(game, mod_id, file_id, nxm=None, md5=None, wait=0, progress=None):
         raise NexusError('download of %s failed verification: %s. The file was discarded.' % (dest.name, '; '.join(problems)))
     os.replace(part, dest)
     print('nexus: downloaded %s (%d bytes, md5 %s; checked: %s)' % (dest.name, got, digest, how), file=sys.stderr)
-    event('have', dest.name, 'downloaded with the Nexus key')
+    event('have', name or dest.name, 'downloaded with the Nexus key')
     return dict(path=str(dest), md5=digest, size=got, verified_by=how)
 
 
@@ -588,7 +594,8 @@ def external_fetch(name, url, file_name, md5, wait=0, folders=None):
 
 def event(kind, name, detail=''):
     """VXRT_NEXUS_EVENTS=1: one line per step for a program that shows the progress in its own words (an installer app):
-    "@@nexus need|<name>|<page to open>" before a wait for the user's download, "@@nexus have|<name>|<how>" when a file is there.
+    "@@nexus need|<name>|<page to open>" before a wait for the user's download, "@@nexus have|<name>|<how>" when a file is there,
+    "@@nexus progress|<name>|<bytes here> <bytes in all, 0 unknown>" about once a second while the key's download runs.
     Never holds the key."""
     if os.environ.get('VXRT_NEXUS_EVENTS') == '1':
         print('@@nexus %s|%s|%s' % (kind, str(name).replace('|', '/').replace('\n', ' '), str(detail).replace('|', '/').replace('\n', ' ')), file=sys.stderr, flush=True)
@@ -636,7 +643,7 @@ def fetch_file(game, mod_id, file_id, nxm=None, md5=None, wait=0, progress=None,
             file_id = None
         if file_id:
             try:
-                return download(game, mod_id, file_id, nxm=nxm, md5=md5, wait=0 if auto_open() else wait, progress=pos)
+                return download(game, mod_id, file_id, nxm=nxm, md5=md5, wait=0 if auto_open() else wait, progress=pos, name=name)
             except NotPremium:
                 if not auto_open():
                     raise
@@ -648,7 +655,7 @@ def fetch_file(game, mod_id, file_id, nxm=None, md5=None, wait=0, progress=None,
             print('nexus: an nxm link cannot be used without an API key (the download-link call needs the key); using the Downloads folder instead.', file=sys.stderr)
         return manual_fetch(game, mod_id, file_id, name=name, md5=md5, wait=wait, progress=progress, accept_name=accept_name)
     try:
-        return download(game, mod_id, file_id, nxm=nxm, md5=md5, wait=0 if auto_open() else wait, progress=pos)
+        return download(game, mod_id, file_id, nxm=nxm, md5=md5, wait=0 if auto_open() else wait, progress=pos, name=name)
     except NotPremium:
         if not auto_open():
             raise
