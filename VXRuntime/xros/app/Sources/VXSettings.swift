@@ -225,6 +225,7 @@ final class VXSettings: ObservableObject {
     static let renderQualityKey = "vxrt.renderQuality"
     static let edgeMaskKey = "vxrt.edgeMask"
     static let graphicsKey = "vxrt.graphics"
+    static let maxRateKey = "klepton.maxRate"       // Klepton's key and values (KleptonTuning.swift, KleptonRendering.maxRate)
     static let foveationKey = "vxrt.foveation"
     static let baseResolutionKey = "vxrt.baseResolution"
     /// The base resolutions offered: 0 is the standard (the display's own picture without foveation, 2048 with it), the others the width
@@ -308,6 +309,10 @@ final class VXSettings: ObservableObject {
             if let v = stageEyeHeight { defaults.set(v, forKey: Self.eyeHeightKey) } else { defaults.removeObject(forKey: Self.eyeHeightKey) }
         }
     }
+    // Frame rate, as in Klepton's games: 100 is the mixed space (the game's picture over a black backdrop), where the headset's display
+    // runs at up to 100 Hz, and the default; 120 is the fully immersive space, at up to 120 Hz. visionOS halves either when the app
+    // cannot keep up. Read when the space opens (next launch).
+    @Published var maxRate: Int { didSet { if !suppress { defaults.set(maxRate, forKey: Self.maxRateKey) } } }
     // Graphics quality: the game's own Low/Medium/High scene detail (.standard: nothing written). Next launch.
     @Published var graphics: VXGraphics { didSet { if !suppress { defaults.set(graphics.rawValue, forKey: Self.graphicsKey) } } }
     // Gameplay (Skyrim VR's own settings; .game / nil = leave the game's own value alone).
@@ -390,6 +395,10 @@ final class VXSettings: ObservableObject {
         if let st = defaults.string(forKey: Self.edgeMaskKey), let v = VXEdgeMask(rawValue: st) { mask = v }
         if let e = environment["VXRT_VISMASK"] { mask = (e == "off" || e == "0") ? .off : (mask == .off ? .standard : mask) }
         edgeMask = mask
+        var rate = (info["KLMaxRateDefault"] as? String) == "120" ? 120 : 100
+        if let v = defaults.object(forKey: Self.maxRateKey) as? Int { rate = v }
+        if let v = environment["VXRT_MAX_RATE"].flatMap(Int.init) { rate = v }
+        maxRate = rate == 120 ? 120 : 100
         var gfx: VXGraphics = (info["VXGraphicsDefault"] as? String).flatMap(VXGraphics.init(rawValue:)) ?? .standard
         if let st = defaults.string(forKey: Self.graphicsKey), let v = VXGraphics(rawValue: st) { gfx = v }
         if let v = environment["VXRT_GRAPHICS"].flatMap(VXGraphics.init(rawValue:)) { gfx = v }

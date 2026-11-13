@@ -181,6 +181,16 @@ func map(_ s: VXSettings) -> [String: String] { Dictionary(uniqueKeysWithValues:
         let g2 = VXSettings(defaults: gd, info: [:], environment: ["VXRT_INI_SET": "Display.fShadowDistance=7000"])
         check((map(g2)["VXRT_INI_SET"] ?? "").hasPrefix("Display.fShadowDistance=7000;Display.iShadowMapResolution=1024"), "the launch's own key comes first")
 
+        // frame rate, Klepton's key and values: 100 by default, 120 stored and from the Info.plist default; anything else is 100
+        let rd = fresh()
+        let r1 = VXSettings(defaults: rd, info: [:], environment: [:])
+        check(r1.maxRate == 100, "frame rate default")
+        r1.maxRate = 120
+        check(rd.integer(forKey: "klepton.maxRate") == 120 && VXSettings(defaults: rd, info: [:], environment: [:]).maxRate == 120, "frame rate persisted under Klepton's key")
+        check(VXSettings(defaults: fresh(), info: ["KLMaxRateDefault": "120"], environment: [:]).maxRate == 120, "frame rate plist default")
+        check(VXSettings(defaults: rd, info: [:], environment: ["VXRT_MAX_RATE": "100"]).maxRate == 100, "frame rate env wins")
+        check(VXSettings(defaults: fresh(), info: [:], environment: ["VXRT_MAX_RATE": "90"]).maxRate == 100, "an unknown rate is 100")
+
         // the launch gate
         check(VXLaunchGate.enabled(info: ["VXStartWindow": "1"], environment: [:], defaultLaunch: true), "gate on")
         check(!VXLaunchGate.enabled(info: ["VXStartWindow": "1"], environment: [:], defaultLaunch: false), "explicit -test/-game: no gate")

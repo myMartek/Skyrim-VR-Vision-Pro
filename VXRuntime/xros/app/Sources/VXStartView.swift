@@ -228,6 +228,16 @@ struct VXSettingsPage: View {
                                      "Das Spiel kann den Rand des Bildes auslassen, den die Linsen nicht zeigen, und läuft dann flüssiger. Siehst du im Spiel einen schwarzen Balken oder schwarze Ecken, wähle hier weniger; „Alles zeichnen“ zeigt nie einen."))
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    GroupBox(vxT("Frame rate", "Bildrate")) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Picker(vxT("Frame rate", "Bildrate"), selection: $settings.maxRate) {
+                                Text(vxT("Up to 100", "Bis 100")).tag(100)
+                                Text(vxT("Up to 120", "Bis 120")).tag(120)
+                            }.pickerStyle(.segmented).labelsHidden()
+                            note(vxT("How often the display shows a picture; the game's own pictures come more slowly and are fitted to your head in between. Up to 100 is the default. Up to 120 is smoother where the Vision Pro's display can do it. When the app cannot keep up, the Vision Pro halves the rate for a while: to 50 from 100, to 60 from 120.",
+                                     "Wie oft die Anzeige ein Bild zeigt; die Bilder des Spiels kommen langsamer und werden dazwischen an deinen Kopf angepasst. Bis 100 ist der Standard. Bis 120 ist flüssiger, wo das Display der Vision Pro es kann. Kommt die App nicht mit, halbiert die Vision Pro die Rate eine Weile: von 100 auf 50, von 120 auf 60."))
+                        }.frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     GroupBox(vxT("Smoothness", "Flüssigkeit")) {
                         VStack(alignment: .leading, spacing: 10) {
                             Picker(vxT("Smoothness", "Flüssigkeit"), selection: $settings.latency) {

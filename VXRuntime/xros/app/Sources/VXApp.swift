@@ -9,6 +9,9 @@ import UIKit
 
 @main
 struct VXRuntimeApp: App {
+    /// The space the frame-rate choice stands for: mixed for up to 100 Hz, full for up to 120 (VXSettings.maxRate).
+    static func immersionStyle(maxRate: Int) -> any ImmersionStyle { maxRate == 120 ? FullImmersionStyle.full : MixedImmersionStyle.mixed }
+
     @Environment(\.scenePhase) private var phase
     // Hand visibility is a setting (VXSettings, default hidden; VXRT_SHOW_HANDS / KL_HAND_MATTING still win): observed, so the toggle applies live.
     @ObservedObject private var settings = VXSettings.shared
@@ -67,7 +70,9 @@ struct VXRuntimeApp: App {
                 VXImmersiveRenderer.start(layerRenderer)
             }
         }
-        .immersionStyle(selection: .constant(.full), in: .full)
+        // Frame rate (Settings, as in Klepton's games): the mixed space for up to 100 Hz, the full one for up to 120. In the mixed space
+        // the game's picture is opaque over the whole view (the presenter writes alpha 1), so the room never shows.
+        .immersionStyle(selection: .constant(VXRuntimeApp.immersionStyle(maxRate: settings.maxRate)), in: .mixed, .full)
         // Klepton's scene conventions (visionos/Sources/KleptonApp.swift, Immersive.systemOverlays): the Home indicator and
         // hand-gesture affordance do not sit on top of the game's picture. A request, not a guarantee. VXRT_OVERLAYS=1 undoes it.
         .persistentSystemOverlays((ProcessInfo.processInfo.environment["VXRT_OVERLAYS"] ?? ProcessInfo.processInfo.environment["KL_OVERLAYS"]) == "1" ? .automatic : .hidden)
