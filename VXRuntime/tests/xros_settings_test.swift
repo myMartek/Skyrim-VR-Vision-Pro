@@ -161,6 +161,16 @@ func map(_ s: VXSettings) -> [String: String] { Dictionary(uniqueKeysWithValues:
         check(VXSettings(defaults: fd, info: [:], environment: ["VXRT_FOVE": "high"]).foveatedRendering == .high, "foveated rendering env wins")
         check(VXSettings(defaults: fd, info: ["VXFoveatedRenderingDefault": "low"], environment: ["VXRT_FOVE": "off"]).foveatedRendering == .off, "foveated rendering env off wins")
         f1.foveatedRendering = .off
+        // display quality (one of the offered values; the highest stores nothing) and the plain resample
+        check(f1.displayQuality == 1.0 && !f1.plainResample && map(f1)["VXRT_RENDER_QUALITY"] == nil && map(f1)["VXRT_REPROJ_FILTER"] == nil, "display quality high, sharp filter by default")
+        f1.displayQuality = 0.8; f1.plainResample = true
+        check(map(f1)["VXRT_RENDER_QUALITY"] == "0.80" && map(f1)["VXRT_REPROJ_FILTER"] == "bilinear", "display quality and filter exported \(map(f1))")
+        let f3 = VXSettings(defaults: fd, info: [:], environment: [:])
+        check(f3.displayQuality == 0.8 && f3.plainResample, "display quality and filter persisted")
+        check(VXSettings(defaults: fd, info: [:], environment: ["VXRT_RENDER_QUALITY": "0.7", "VXRT_REPROJ_FILTER": "bicubic"]).displayQuality == 0.65, "a stored or given quality shows as the nearest offered one")
+        check(!VXSettings(defaults: fd, info: [:], environment: ["VXRT_REPROJ_FILTER": "bicubic"]).plainResample, "filter env wins")
+        f1.displayQuality = 1.0; f1.plainResample = false
+        check(f1.renderQuality == nil && map(f1)["VXRT_RENDER_QUALITY"] == nil, "the highest quality stores nothing")
         check(VXSettings(defaults: fd, info: [:], environment: ["VXRT_BASE_RESOLUTION": "2560"]).baseResolution == 2560, "base env wins")
         check(VXSettings(defaults: fresh(), info: [:], environment: ["VXRT_BASE_RESOLUTION": "1234"]).baseResolution == 0, "an unknown base is the standard")
         f2.baseResolution = 0

@@ -219,6 +219,19 @@ struct VXSettingsPage: View {
                                        "Apples MetalFX bringt das Bild des Spiels auf die Größe der Anzeige: schärfer als einfaches Skalieren.")
                                  : vxT("The picture is simply stretched: softer, with no extra work.",
                                        "Das Bild wird nur gestreckt: weicher, ohne zusätzliche Arbeit."))
+                            Picker(vxT("Display quality", "Anzeigequalität"), selection: Binding(get: { settings.displayQuality }, set: { settings.displayQuality = $0 })) {
+                                Text(vxT("High", "Hoch")).tag(1.0)
+                                Text(vxT("Medium", "Mittel")).tag(0.8)
+                                Text(vxT("Low", "Niedrig")).tag(0.65)
+                            }.pickerStyle(.segmented).disabled(!settings.foveation)
+                            note(vxT("Display quality: how finely the finished picture is drawn into the display. That happens on every display frame, up to 100 times a second whatever the game's own rate, and takes a large part of the graphics time. Lower leaves more for the game and is a little softer. Takes effect at the next start.",
+                                     "Anzeigequalität: wie fein das fertige Bild in die Anzeige gezeichnet wird. Das passiert bei jedem Anzeigebild, bis zu 100-mal pro Sekunde, egal wie schnell das Spiel selbst ist, und kostet einen großen Teil der Grafikzeit. Niedriger lässt dem Spiel mehr übrig und ist etwas weicher. Gilt ab dem nächsten Start."))
+                            Picker(vxT("Picture filter", "Bildfilter"), selection: $settings.plainResample) {
+                                Text(vxT("Sharp", "Scharf")).tag(false)
+                                Text(vxT("Plain", "Einfach")).tag(true)
+                            }.pickerStyle(.segmented)
+                            note(vxT("Picture filter: “Sharp” keeps fine detail steady while you move your head; “Plain” takes a fifth of the samples and saves graphics time, at the price of a slight shimmer on fine detail. Takes effect at the next start.",
+                                     "Bildfilter: „Scharf“ hält feine Details ruhig, während du den Kopf bewegst; „Einfach“ braucht ein Fünftel der Abtastungen und spart Grafikzeit, um den Preis eines leichten Flimmerns an feinen Details. Gilt ab dem nächsten Start."))
                             Text("Foveated Rendering")
                             Picker("Foveated Rendering", selection: $settings.foveatedRendering) {
                                 Text(vxT("Off", "Aus")).tag(VXFoveatedRendering.off)

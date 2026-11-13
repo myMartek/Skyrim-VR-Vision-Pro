@@ -274,6 +274,8 @@ final class VXStatsPanel {
         let foveLevel = vx_d3d_fove_status(&fovePercent)       // foveated rendering in the game's passes, when it is really in use
         s.path = (VXDisplay.foveated ? "D3D11 on Metal · foveated display" : "D3D11 on Metal · plain display")
             + (foveLevel > 0 ? " · FR \(["", "low", "medium", "high"][Int(min(foveLevel, 3))]) \(fovePercent)%" : "")
+            + ((VXDisplay.qualityCeiling ?? 1) < 0.999 ? String(format: " · display %.2f", VXDisplay.qualityCeiling ?? 1) : "")
+            + (settings.plainResample ? " · plain filter" : "")
         note(s)
     }
 }

@@ -231,6 +231,10 @@ final class VXSettings: ObservableObject {
     static let moveKey = "vxrt.move"
     static let sharpenKey = "vxrt.sharpen"
     static let renderQualityKey = "vxrt.renderQuality"
+    static let plainResampleKey = "vxrt.plainResample"
+    /// The display qualities offered (VXDisplay.requestedQuality; 1.0 is the highest and the default). The picture is drawn into the
+    /// display at this share of its finest resolution, on every display frame: up to 100 times a second, whatever the game's own rate.
+    static let displayQualities: [Double] = [1.0, 0.8, 0.65]
     static let edgeMaskKey = "vxrt.edgeMask"
     static let graphicsKey = "vxrt.graphics"
     static let maxRateKey = "klepton.maxRate"       // Klepton's key and values (KleptonTuning.swift, KleptonRendering.maxRate)
@@ -271,6 +275,14 @@ final class VXSettings: ObservableObject {
         }
     }
     // The compositor's render quality (VXRT_RENDER_QUALITY, 0...1: the size of the drawable); nil = the system's default (next launch).
+    // How the finished picture is resampled into the display (src/native_vr_present.m): false, the default, the 5-tap Catmull-Rom filter
+    // that keeps repeated frames equally sharp; true the plain bilinear one, a fifth of the samples. Next launch.
+    @Published var plainResample: Bool = false { didSet { if !suppress { defaults.set(plainResample, forKey: Self.plainResampleKey) } } }
+    /// The offered display quality nearest to the stored one (nil: the highest).
+    var displayQuality: Double {
+        get { let q = renderQuality ?? 1.0; return Self.displayQualities.min { abs($0 - q) < abs($1 - q) } ?? 1.0 }
+        set { renderQuality = newValue >= 0.999 ? nil : newValue }
+    }
     @Published var renderQuality: Double? {
         didSet {
             guard !suppress else { return }
@@ -418,6 +430,10 @@ final class VXSettings: ObservableObject {
         if let v = defaults.object(forKey: Self.foveationKey) as? Bool { fove = v }
         if let v = Self.flag(environment["VXRT_FOVEATION"]) { fove = v }
         foveation = fove
+        // The plain (bilinear) resample of the finished picture instead of the 5-tap one: env VXRT_REPROJ_FILTER, then the saved choice.
+        var plain = defaults.bool(forKey: Self.plainResampleKey)
+        if let e = environment["VXRT_REPROJ_FILTER"] { plain = e == "bilinear" }
+        plainResample = plain
         var fr: VXFoveatedRendering = (info["VXFoveatedRenderingDefault"] as? String).flatMap(VXFoveatedRendering.init(rawValue:)) ?? .off
         if let st = defaults.string(forKey: Self.foveatedRenderingKey), let v = VXFoveatedRendering(rawValue: st) { fr = v }
         if let e = environment["VXRT_FOVE"] { fr = VXFoveatedRendering(rawValue: e) ?? .off }
@@ -492,6 +508,7 @@ final class VXSettings: ObservableObject {
         if let p = predictMs { out.append(("VXRT_PREDICT_MS", String(format: "%.0f", min(max(p, Self.predictRange.lowerBound), Self.predictRange.upperBound)))) }
         if let v = sharpen, v > 0 { out.append(("VXRT_SHARPEN", String(format: "%.2f", min(max(v, 0), 1)))) }
         if let v = renderQuality { out.append(("VXRT_RENDER_QUALITY", String(format: "%.2f", min(max(v, 0), 1)))) }
+        if plainResample { out.append(("VXRT_REPROJ_FILTER", "bilinear")) }
         out += edgeMask.exports
         if foveatedRendering != .off { out.append(("VXRT_FOVE", foveatedRendering.rawValue)) }
         if let h = stageEyeHeight { out.append(("VXRT_STAGE_EYE_HEIGHT", String(format: "%.2f", min(max(h, Self.eyeHeightRange.lowerBound), Self.eyeHeightRange.upperBound)))) }
