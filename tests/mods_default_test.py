@@ -12,12 +12,14 @@ cfg = json.loads(DEFAULT.read_text())
 assert mods.DEFAULT_LIST == DEFAULT and DEFAULT.is_file()
 assert mods.list_problems(cfg) == [], mods.list_problems(cfg)
 ids = [m['id'] for m in sorted(cfg['mods'], key=lambda m: m['priority'])]
-assert ids == ['skyland', 'sksevr-scripts', 'skse-core', 'skyrimvrtools', 'higgs', 'planck', 'skyui-vr', 'skyui-vr-nojit', 'vrik', 'modlist-dump'], ids
+assert ids == ['skyland', 'sksevr-scripts', 'skse-core', 'skyrimvrtools', 'higgs', 'higgs-timing', 'planck', 'skyui-vr', 'skyui-vr-nojit', 'vrik', 'modlist-dump'], ids
 by = {m['id']: m for m in cfg['mods']}
 assert [p for m in sorted(cfg['mods'], key=lambda m: m['priority']) if m.get('enabled', True) for p in m.get('plugins', [])] == \
     ['Lit Road Signs.esp', 'Skyland Watercolor - Slow Green-Vanilla.esp', 'higgs_vr.esp', 'SkyUI_SE.esp', 'vrik.esp']
 assert by['modlist-dump']['enabled'] is False and by['skyui-vr-nojit']['priority'] == by['skyui-vr']['priority'] + 1
 assert by['skyui-vr-nojit']['recipe'] == dict(by['skyui-vr-nojit']['recipe'], kind='skyui_nojit', **{'from': 'skyui-vr'})
+assert by['higgs-timing']['priority'] == by['higgs']['priority'] + 1 and by['higgs-timing']['recipe']['kind'] == 'ini_set'
+assert float(by['higgs-timing']['recipe']['set']['TriggerPreemptTime']) >= 0.15      # several frames at 20 to 30 a second
 for m in cfg['mods']:
     if 'nexus' in m:
         assert m['nexus']['game'] and str(m['nexus']['mod_id']).isdigit() and len(m['nexus']['md5']) == 32, m['id']
@@ -50,7 +52,8 @@ with tempfile.TemporaryDirectory() as t:
     tree('sksevr-scripts', {'Scripts/Actor.pex': b'x'})
     (priv / 'mods-src' / 'skse-core').mkdir(parents=True); (priv / 'mods-src' / 'skse-core' / 'sksevr_1_4_15.dll').write_bytes(b'MZ core')
     tree('skyrimvrtools', {'SKSE/Plugins/vrtools.ini': b'x'})
-    tree('higgs', {'SKSE/Plugins/higgs.ini': b'x', 'higgs_vr.esp': tes4})
+    higgs_ini = b'# a comment\r\nTriggerPreemptTime = 0.045\r\n\r\nForceInputTime = 0.05\r\nEnableGrip = 1\r\n'
+    tree('higgs', {'SKSE/Plugins/higgs_vr.ini': higgs_ini, 'higgs_vr.esp': tes4})
     tree('planck', {'SKSE/Plugins/planck.ini': b'x'})
     tree('skyui-vr', {'SKSE/Plugins/SkyUI-VR/MainEntry.lua': b'return 1\n', 'SkyUI_SE.esp': tes4})
     tree('vrik', {'SKSE/Plugins/vrik.ini': b'x', 'vrik.esp': tes4})
@@ -65,6 +68,10 @@ with tempfile.TemporaryDirectory() as t:
     e = [x for x in doc['skse_plugins'] if x['path'].lower().endswith('mainentry.lua')]
     assert len(e) == 1 and e[0]['mod'] == 'skyui-vr-nojit' and e[0]['replaces_mod'] == 'skyui-vr', e
     assert doc['shadow_install'] == ['Scripts/Actor.pex']
+    ini = (t / 'pack/merged/Data/SKSE/Plugins/higgs_vr.ini').read_bytes()   # HIGGS's own file with two values changed, the rest byte for byte
+    assert ini == b'# a comment\r\nTriggerPreemptTime = 0.2\r\n\r\nForceInputTime = 0.15\r\nEnableGrip = 1\r\n', ini
+    e = [x for x in doc['skse_plugins'] if x['path'].lower().endswith('higgs_vr.ini')]
+    assert len(e) == 1 and e[0]['mod'] == 'higgs-timing' and e[0]['replaces_mod'] == 'higgs', e   # so the capture knows the ini changed
 
     import hashlib, nexus                                          # no file_id recorded: the Downloads-folder path matches by the pinned md5
     dl = t / 'dl'; dl.mkdir(); (dl / 'HIGGS-43930-1-10-10-1.zip').write_bytes(b'archive')

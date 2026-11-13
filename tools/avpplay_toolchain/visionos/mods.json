@@ -29,7 +29,7 @@
    "default": false,
    "macRun": true,
    "downloadBytes": 9000000,
-   "entries": ["sksevr-scripts", "skse-core", "skyrimvrtools", "higgs", "planck", "skyui-vr", "skyui-vr-nojit", "vrik"],
+   "entries": ["sksevr-scripts", "skse-core", "skyrimvrtools", "higgs", "higgs-timing", "planck", "skyui-vr", "skyui-vr-nojit", "vrik"],
    "mods": [
     { "name": "SKSE VR", "version": "2.0.12", "url": "https://skse.silverlock.org", "about": { "en": "the script extender the others need", "de": "die Grundlage, die die anderen brauchen" } },
     { "name": "SkyrimVRTools", "version": "2.3 beta", "url": "https://www.nexusmods.com/skyrimspecialedition/mods/27782", "about": { "en": "a helper library for VR mods", "de": "Hilfsbibliothek für VR-Mods" } },

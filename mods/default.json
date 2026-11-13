@@ -110,6 +110,23 @@
    }
   },
   {
+   "id": "higgs-timing",
+   "name": "HIGGS: input times for a low frame rate",
+   "kind": "skse",
+   "enabled": true,
+   "priority": 41,
+   "recipe": {
+    "kind": "ini_set",
+    "from": "higgs",
+    "file": "SKSE/Plugins/higgs_vr.ini",
+    "set": {
+     "TriggerPreemptTime": "0.2",
+     "ForceInputTime": "0.15"
+    },
+    "note": "HIGGS keeps a trigger or grip press for TriggerPreemptTime (0.045 s) until the game's next update takes it; at 90 frames a second that is four frames. On the headset the game makes 20 to 30 a second, one frame is 35 to 50 ms, so the press ran out before the update and went on to the game instead (weapon drawn, nothing grabbed; seen 2026-11-13). The same for ForceInputTime (0.05 s). Priority 41 beats HIGGS's 40 in the merged tree."
+   }
+  },
+  {
    "id": "planck",
    "name": "PLANCK 0.8.2",
    "kind": "skse",

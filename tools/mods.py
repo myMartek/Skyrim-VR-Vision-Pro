@@ -19,7 +19,9 @@ A mod may instead name a Nexus Mods file: "nexus": {"game": "skyrimspecialeditio
 Other keys of an entry: "nexus.file_id" may be null when "nexus.md5" is pinned (the Downloads-folder fetch matches by md5); "install": {"data_root":
 "Folder" (the archive's Data content is inside it), "exclude": [fnmatch patterns on Data-relative paths, e.g. "*.pdb"]}; "external": {url, file_name, md5,
 extract: glob under the archive's top folder} for a mod that is not on Nexus (put the archive in <VXRT_PRIVATE_ROOT>/downloads or ~/Downloads; checked by md5);
-"recipe": {"kind": "fomod_auto", "allow_plugins": [...]} (unpack a FOMOD by its own defaults) or {"kind": "skyui_nojit", "from": "<skyui mod id>"} (the LuaJIT-off overlay).
+"recipe": {"kind": "fomod_auto", "allow_plugins": [...]} (unpack a FOMOD by its own defaults) or {"kind": "skyui_nojit", "from": "<skyui mod id>"} (the LuaJIT-off overlay)
+or {"kind": "ini_set", "from": "<mod id>", "file": "SKSE/Plugins/x.ini", "set": {"Key": "value"}} (that mod's ini with those values, as a mod of
+its own above it: settings a mod needs on this platform, e.g. times that assume 90 frames a second).
 kind: files (loose assets), plugin (assets plus ESP/ESM/ESL; listed in plugins), skse (SKSE plugins: DLLs, ini, lua under Data/SKSE/Plugins, plus any ESP/scripts),
 runtime (with "provides": "skse_core" and an "external" archive: the SKSE VR core DLL; it goes to PACK/overlay_root, never into Data/).
 A skse mod may carry "aot": {"sweep": "1000-5200"} (options for the AOT module of its DLL, passed on by tools/skse_capture.py).
@@ -108,6 +110,21 @@ def skse_capture_files(plugin_set):
     return got if all(p.is_file() for p in got.values()) else {}
 
 
+GENERATED = ('skyui_nojit', 'ini_set')         # recipes that make a mod's tree from another mod of the list
+
+
+def ini_set(src, dst, values, who):
+    """src (an ini of "Key = value" lines) -> dst with the given keys' values replaced; everything else, comments and line ends
+    included, stays byte for byte. A key the file does not have is an error: the mod's version is not the one the values were chosen for."""
+    if not src.is_file(): sys.exit(f'{who}: {src} is not there')
+    text = src.read_bytes().decode('utf-8', errors='surrogateescape')
+    for key, value in values.items():
+        text, n = re.subn(r'(?m)^([ \t]*%s[ \t]*=[ \t]*)[^\r\n]*' % re.escape(key), lambda mo: mo.group(1) + value, text)
+        if n != 1: sys.exit(f'{who}: {src.name} has {n} lines for {key}, expected one')
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_bytes(text.encode('utf-8', errors='surrogateescape'))
+
+
 def clone(src, dst):
     dst.mkdir(parents=True, exist_ok=True)
     subprocess.run(['cp', '-cR', str(src) + '/.', str(dst)], check=True)
@@ -159,8 +176,12 @@ def list_problems(cfg):
         inst = m.get('install') or {}
         if inst.get('data_root') and (os.path.isabs(inst['data_root']) or '..' in Path(inst['data_root']).parts): out.append(f'{i}: install.data_root must stay inside the archive')
         r = m.get('recipe')
-        if r is not None and r.get('kind') not in ('fomod_auto', 'skyui_nojit'): out.append(f'{i}: recipe kind must be fomod_auto or skyui_nojit')
-        if r and r.get('kind') == 'skyui_nojit' and r.get('from') not in {x.get('id') for x in cfg['mods']}: out.append(f'{i}: recipe.from names no mod of the list')
+        if r is not None and r.get('kind') not in ('fomod_auto',) + GENERATED: out.append(f'{i}: recipe kind must be fomod_auto, skyui_nojit or ini_set')
+        if r and r.get('kind') in GENERATED and r.get('from') not in {x.get('id') for x in cfg['mods']}: out.append(f'{i}: recipe.from names no mod of the list')
+        if r and r.get('kind') == 'ini_set' and not (isinstance(r.get('file'), str) and r['file'] and '..' not in r['file'].split('/') and not r['file'].startswith('/')
+                                                      and isinstance(r.get('set'), dict) and r['set']
+                                                      and all(isinstance(k, str) and re.fullmatch(r'[A-Za-z0-9_.]+', k) and isinstance(v, str) and '\n' not in v for k, v in r['set'].items())):
+            out.append(f'{i}: an ini_set recipe needs "file" (a path under Data) and "set" (keys to string values)')
         if m.get('kind') == 'runtime' and (m.get('provides') != 'skse_core' or 'external' not in m): out.append(f'{i}: a runtime entry needs "provides": "skse_core" and an external archive')
         if m.get('enabled', True) and m['kind'] not in ('skse', 'runtime') and not any(k in m for k in ('source', 'nexus', 'external', 'recipe')): out.append(f'{i}: enabled but no source, nexus, external or recipe')
         text = json.dumps(m)
@@ -346,21 +367,24 @@ def build(a):
             print(f"{m['id']}: not fetched yet: run tools/mods.py fetch --list {lst} (or vxrt_build.py mods-fetch)", file=sys.stderr); sys.exit(2)
     for m in mods:                                   # (generated mods: the SkyUI LuaJIT-off overlay, from the fetched SkyUI tree)
         r = m.get('recipe') or {}
-        if m.get('enabled', True) and r.get('kind') == 'skyui_nojit':
+        if m.get('enabled', True) and r.get('kind') in GENERATED:
             base = next((x for x in mods if x['id'] == r.get('from')), None)
             if not base: sys.exit(f"{m['id']}: recipe.from {r.get('from')!r} is not in the list")
             sdir = (lst.parent / base['source']).resolve(strict=True) if base.get('source') else nexus_tree(base['id'])
             tree = nexus_tree(m['id'])
             if tree.exists(): subprocess.run(['rm', '-rf', str(tree)], check=True)
-            sys.path.insert(0, str(Path(__file__).resolve().parent)); import skyui_nojit
-            skyui_nojit.main(str(sdir / 'Data'), str(tree))
+            if r['kind'] == 'skyui_nojit':
+                sys.path.insert(0, str(Path(__file__).resolve().parent)); import skyui_nojit
+                skyui_nojit.main(str(sdir / 'Data'), str(tree))
+            else:
+                ini_set(sdir / 'Data' / r['file'], tree / 'Data' / r['file'], r['set'], m['id'])
     (out / 'merged' / 'Data').mkdir(parents=True)
     res = []; plugins = []; skse_plugins = []; shadow = []; runtime = {}
     for m in sorted(mods, key=lambda m: (m['priority'], m['id'])):
         r = dict(id=m['id'], name=m.get('name', m['id']), kind=m['kind'], enabled=bool(m.get('enabled', True)), priority=m['priority'],
                  plugins=list(m.get('plugins', [])), memory_hint_mb=m.get('memory_hint_mb'), size_bytes=m.get('size_bytes'), files=None,
                  active=False, path=None, note=m.get('note', ''))
-        if r['enabled'] and not m.get('source') and any(k in m for k in ('nexus', 'external')) or (r['enabled'] and (m.get('recipe') or {}).get('kind') == 'skyui_nojit'):
+        if r['enabled'] and not m.get('source') and any(k in m for k in ('nexus', 'external')) or (r['enabled'] and (m.get('recipe') or {}).get('kind') in GENERATED):
             m = dict(m, source=str(nexus_tree(m['id'])))    # (absolute: joins as itself)
         if m['kind'] == 'runtime':
             if r['enabled']:                              # (the SKSE core DLL: copied to overlay_root below, never merged into Data/)
