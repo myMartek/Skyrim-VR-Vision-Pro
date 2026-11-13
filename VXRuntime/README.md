@@ -44,6 +44,7 @@ VXRT_FLUSH_DRAWS=100 ...                   # send recorded work to the GPU every
 VXRT_EAGER_CLEARS=1 ...                    # clears as passes of their own (default: folded into the next render pass's load action)
 VXRT_SKYRIM_SETUP=game ...                 # Skyrim VR: show the game's first-launch VR setup even when saved games exist (default: a save counts as the setup done; src/client.c)
 VXRT_FOVE=low|medium|high ...              # Direct3D 11: foveated rendering of the eyes' passes through a rasterization rate map (src/d3d11_draw.m, "foveated rendering"); VXRT_FOVE_BOX/RAMP/FLOOR override the profile, VXRT_FOVE_TRACE=n lists conversions, VXRT_FOVE_KEEP=1 keeps the textures' own memory
+VXRT_PEEK='name=ADDR:N;name=ADDR>OFF:N;name=strmap@ADDR' ...   # diagnostic: log places in the program's memory when they change (src/codehooks.c): N bytes at ADDR, N bytes at OFF past the pointer at ADDR, or the true keys of an MSVC unordered_map<string,bool>; VXRT_PEEK_MS sets the interval (20)
 VXRT_EXTRA_ARGS='helper.exe=--a --b' ...   # helper.exe, wherever in the process tree it starts, gets --a --b after its name
 <VXRT_ROOT>/program_env.txt                # "NMS.exe VXRT_STATS=1 ...": settings for one program however it starts (a game Windows Steam starts)
 VXRT_STATS=1 (Vulkan)                      # every 5 s: fps, frame times, GPU busy, submit/encode/present/drawable waits, draws, passes, barriers, pipelines and compiles
