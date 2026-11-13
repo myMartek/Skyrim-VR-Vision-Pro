@@ -298,7 +298,7 @@ def fetch(a):
         todo += 1
         try:
             r = nexus.fetch_file(game, mod, fid, nxm=links.get((game.lower(), mod, fid)), md5=pinned, wait=nexus.default_wait(a.wait),
-                                 progress=(done, len(pending)), name=m.get('name') or m['id'], manual=a.manual or fid is None, accept_name=a.accept_name_match)
+                                 progress=(done, len(pending)), name=m.get('name') or m['id'], manual=a.manual, accept_name=a.accept_name_match)
             tmp = tree.with_name(tree.name + '.tmp')
             if tmp.exists(): shutil.rmtree(tmp)
             raw = tmp / 'raw'; _unpack(Path(r['path']), raw)

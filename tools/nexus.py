@@ -360,6 +360,7 @@ def download(game, mod_id, file_id, nxm=None, md5=None, wait=0, progress=None):
         raise NexusError('download of %s failed verification: %s. The file was discarded.' % (dest.name, '; '.join(problems)))
     os.replace(part, dest)
     print('nexus: downloaded %s (%d bytes, md5 %s; checked: %s)' % (dest.name, got, digest, how), file=sys.stderr)
+    event('have', dest.name, 'downloaded with the Nexus key')
     return dict(path=str(dest), md5=digest, size=got, verified_by=how)
 
 
@@ -457,6 +458,7 @@ def manual_fetch(game, mod_id, file_id, name=None, md5=None, wait=0, progress=No
     hit = cache_lookup(want_md5)
     if hit:
         e('Using %s from the build\'s download cache (md5 %s).' % (hit, want_md5))
+        event('have', label, 'kept from before')
         return dict(path=str(hit), md5=want_md5, size=hit.stat().st_size, verified_by='pinned md5')
 
     def finish(src, st):
@@ -472,6 +474,7 @@ def manual_fetch(game, mod_id, file_id, name=None, md5=None, wait=0, progress=No
         finally:
             part.unlink(missing_ok=True)
         e('Picked up %s from %s (copied, the original is untouched; md5 %s).' % (src.name, folder, got))
+        event('have', label, 'from the Downloads folder')
         return dict(path=str(dest), md5=got, size=dest.stat().st_size, verified_by='pinned md5' if want_md5 else 'file name and your confirmation')
 
     def scan():
@@ -517,8 +520,12 @@ def manual_fetch(game, mod_id, file_id, name=None, md5=None, wait=0, progress=No
     e('  2. Click "Manual download", then "Slow download".')
     e("  3. I'll pick the file up from your Downloads folder (%s)." % folder)
     e('Waiting up to %d s. Press Ctrl-C to skip this mod.' % wait)
+    if wait:
+        event('need', label, files_page(game, mod_id, file_id))
     try:
         if tty and input('Open the page now with `open`? [y/N] ').strip().lower() in ('y', 'yes'):
+            subprocess.run(['open', files_page(game, mod_id, file_id)])
+        elif not tty and wait and auto_open():
             subprocess.run(['open', files_page(game, mod_id, file_id)])
         deadline = time.time() + wait
         while time.time() < deadline:
@@ -553,32 +560,98 @@ def external_fetch(name, url, file_name, md5, wait=0, folders=None):
     if not r and sizes.get('unstable'):
         _poll_sleep(STABLE + 0.1); r = scan()
     if r:
+        event('have', name, 'kept from before')
         return r
     e('%s is not on Nexus. Download it in your browser (no account needed):' % name)
     e('  %s' % url)
     e('and keep the file name (%s). I check the md5 (%s) and pick it up from your Downloads folder (%s).' % (file_name, want, folders[-1]))
     if wait:
         e('Waiting up to %d s. Press Ctrl-C to skip.' % wait)
+        event('need', name, url)
     try:
+        if wait and auto_open() and not (sys.stdin is not None and sys.stdin.isatty()):
+            subprocess.run(['open', url])
         deadline = time.time() + wait
         while time.time() < deadline:
             _poll_sleep(POLL)
             r = scan()
             if r:
                 e('Found %s (md5 %s).' % (r, want))
+                event('have', name, 'from the Downloads folder')
                 return r
     except KeyboardInterrupt:
         raise Skipped('skipped %s by request' % name)
     raise Skipped('no archive with md5 %s appeared in %s for %s' % (want, ', '.join(str(f) for f in folders), name))
 
 
+def event(kind, name, detail=''):
+    """VXRT_NEXUS_EVENTS=1: one line per step for a program that shows the progress in its own words (an installer app):
+    "@@nexus need|<name>|<page to open>" before a wait for the user's download, "@@nexus have|<name>|<how>" when a file is there.
+    Never holds the key."""
+    if os.environ.get('VXRT_NEXUS_EVENTS') == '1':
+        print('@@nexus %s|%s|%s' % (kind, str(name).replace('|', '/').replace('\n', ' '), str(detail).replace('|', '/').replace('\n', ' ')), file=sys.stderr, flush=True)
+
+
+def auto_open():
+    """VXRT_NEXUS_OPEN=1: a caller without a terminal (an installer app running the stages) wants each download page opened in the
+    browser as its turn comes, instead of the question a terminal gets."""
+    return os.environ.get('VXRT_NEXUS_OPEN') == '1'
+
+
+def find_file_id(game, mod_id, md5, key):
+    """The id of the file of a mod that has this md5: from the mod's file list, else from Nexus's md5 search. None when neither knows it."""
+    want = (md5 or '').lower()
+    if not re.fullmatch(r'[0-9a-f]{32}', want):
+        return None
+    for f in list_files(game, mod_id, key):
+        if str(f.get('md5') or '').lower() == want and f.get('file_id'):
+            return str(f['file_id'])
+    try:
+        hits = get_json('games/%s/mods/md5_search/%s.json' % (_ident(game, 'game'), want), key)
+    except NexusError:
+        return None
+    for h in hits if isinstance(hits, list) else []:
+        mod, fd = h.get('mod') or {}, h.get('file_details') or {}
+        if str(mod.get('mod_id')) == str(mod_id) and fd.get('file_id'):
+            return str(fd['file_id'])
+    return None
+
+
 def fetch_file(game, mod_id, file_id, nxm=None, md5=None, wait=0, progress=None, name=None, manual=False, accept_name=False):
-    """One entry point: the API path when a key is set (and not --manual), else the Downloads-folder path."""
-    if manual or not file_id or not (os.environ.get('NEXUS_API_KEY') or '').strip():
+    """One entry point: the API path when a key is set (and not manual), else the Downloads-folder path. With a key, a list
+    that pins only the md5 has its file id looked up; and where each page is opened for the user anyway (auto_open), an account
+    that turns out not to be Premium goes on through the browser instead of stopping for an nxm link."""
+    key = (os.environ.get('NEXUS_API_KEY') or '').strip()
+    pos = ('%d of %d done' % progress) if isinstance(progress, tuple) else progress
+    if key and not manual and not file_id and md5:
+        hit = cache_lookup(md5.lower())
+        if hit:
+            return manual_fetch(game, mod_id, file_id, name=name, md5=md5, wait=0, progress=progress, accept_name=accept_name)
+        try:
+            file_id = find_file_id(game, mod_id, md5, key)
+        except NexusError as e:
+            print('nexus: could not look up the file of %s by its md5 (%s); using the Downloads folder instead.' % (name or 'mod %s' % mod_id, scrub(e, key)), file=sys.stderr)
+            file_id = None
+        if file_id:
+            try:
+                return download(game, mod_id, file_id, nxm=nxm, md5=md5, wait=0 if auto_open() else wait, progress=pos)
+            except NotPremium:
+                if not auto_open():
+                    raise
+                print('nexus: this account is not Premium, so Nexus gives no direct download; going on through the browser.', file=sys.stderr)
+            return manual_fetch(game, mod_id, file_id, name=name, md5=md5, wait=wait, progress=progress, accept_name=accept_name)
+        return manual_fetch(game, mod_id, None, name=name, md5=md5, wait=wait, progress=progress, accept_name=accept_name)
+    if manual or not file_id or not key:
         if nxm:
             print('nexus: an nxm link cannot be used without an API key (the download-link call needs the key); using the Downloads folder instead.', file=sys.stderr)
         return manual_fetch(game, mod_id, file_id, name=name, md5=md5, wait=wait, progress=progress, accept_name=accept_name)
-    return download(game, mod_id, file_id, nxm=nxm, md5=md5, wait=wait, progress=('%d of %d done' % progress) if isinstance(progress, tuple) else progress)
+    try:
+        return download(game, mod_id, file_id, nxm=nxm, md5=md5, wait=0 if auto_open() else wait, progress=pos)
+    except NotPremium:
+        if not auto_open():
+            raise
+        print('nexus: this account is not Premium, so Nexus gives no direct download; going on through the browser.', file=sys.stderr)
+    return manual_fetch(game, mod_id, file_id, name=name, md5=md5, wait=wait, progress=progress, accept_name=accept_name)
 
 
 # --- nxm hand-off: the queue, the handler app, the prompt ------------------------------------------------------------------
