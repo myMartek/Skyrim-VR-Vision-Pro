@@ -332,7 +332,9 @@ def download(game, mod_id, file_id, nxm=None, md5=None, wait=0, progress=None):
             raise
         nxm = await_nxm(game, mod_id, file_id, info, key, wait, progress)
         links = download_links(game, mod_id, file_id, key, nxm)
-    link = links[0]['URI']
+    # Nexus hands the link out with the archive's own name in it, blanks and all ("Skyland AIO 1k-34179-4-32-….7z"), which
+    # http.client refuses: escape what a URL cannot carry and leave everything else, the signature's query included, as it is.
+    link = urllib.parse.quote(links[0]['URI'], safe="%/:?&=#+@!$,;~*'()[]")
     sp = urllib.parse.urlsplit(link)
     if sp.scheme != 'https' and not (os.environ.get('NEXUS_API_BASE') and sp.scheme == 'http'):
         raise NexusError('Nexus gave a download link that is not https; refusing it')

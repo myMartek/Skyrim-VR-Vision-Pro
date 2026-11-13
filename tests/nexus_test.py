@@ -37,7 +37,7 @@ class Fake(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         S = type(self); S.hits.append((self.path, dict(self.headers)))
         path, _, q = self.path.partition('?')
-        if path == '/cdn/f.zip':
+        if path == '/cdn/Main%20file%201k.zip':      # (what the client must ask for: the link itself has blanks, as Nexus's do)
             return self.send(200, S.payload)
         if self.headers.get('apikey') != KEY:
             return self.j(401, {'message': 'Please provide a valid API Key'})
@@ -55,7 +55,7 @@ class Fake(http.server.BaseHTTPRequestHandler):
                 return self.j(400, {'message': 'bad key'})
             if not S.premium and ('key=' + NXMKEY) not in q:
                 return self.j(403, {'message': 'not premium'})
-            return self.j(200, [{'name': 'CDN', 'short_name': 'cdn', 'URI': 'http://127.0.0.1:%d/cdn/f.zip' % self.server.server_port}])
+            return self.j(200, [{'name': 'CDN', 'short_name': 'cdn', 'URI': 'http://127.0.0.1:%d/cdn/Main file 1k.zip?expires=1&md5=x_y-z' % self.server.server_port}])
         if path == '/v1/games/skyrimspecialedition/mods/md5_search/%s.json' % S.md5 and S.search:
             return self.j(200, [{'mod': {'mod_id': 7}, 'file_details': {'file_id': 9, 'md5': S.md5}}])
         self.j(404, {'message': 'no'})

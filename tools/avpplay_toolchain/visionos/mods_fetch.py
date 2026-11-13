@@ -13,6 +13,8 @@ while it runs, and shows these lines in its own words (every other line is for t
     @@mods done|<n>                       all there
     !! mods: <why>                        it stopped (exit 1 failed, 2 the player did not download a file in time)
 
+Ended with SIGTERM (the player cancelled) it ends the fetch it started and exits 130 without a further line.
+
 The files come from Nexus Mods under the player's own account and its terms (personal use; nothing is redistributed),
 and SKSE VR from its authors' site. Without a key each page is opened in the browser (VXRT_NEXUS_OPEN) and the
 archive is taken from the Downloads folder once it is complete and has the pinned md5; with NEXUS_API_KEY in the
@@ -22,6 +24,7 @@ project's client downloads them. The key is never printed. KLEPTON_MODS_WAIT: se
 """
 import os
 import pathlib
+import signal
 import subprocess
 import sys
 
@@ -68,6 +71,15 @@ def main(argv):
         env["VXRT_NEXUS_OPEN"] = "1"
     cmd = [sys.executable, "-I", str(pathlib.Path(paths["REPO"]) / "tools" / "mods.py"), "fetch", "--list", str(lst), "--wait", str(0 if check else wait)]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env, text=True, errors="replace")
+
+    def stop(signum, frame):                    # the player cancelled (AVP Play ends this script): end the fetch it started too
+        try:
+            p.terminate()
+        except OSError:
+            pass
+        os._exit(130)
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        signal.signal(sig, stop)
     have, seen, missing, last_need = 0, set(), [], None
     for line in p.stdout:
         line = line.rstrip("\n")

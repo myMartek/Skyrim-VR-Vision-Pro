@@ -11,6 +11,10 @@
   "key": {
    "variable": "NEXUS_API_KEY",
    "page": "https://next.nexusmods.com/settings/api-keys",
+   "hint": {
+    "en": "That page lists a key for many programs. Yours is at the very bottom: “Personal API Key”.",
+    "de": "Die Seite führt einen Schlüssel für viele Programme auf. Deiner steht ganz unten: „Personal API Key“."
+   },
    "premiumOnly": true
   }
  },
