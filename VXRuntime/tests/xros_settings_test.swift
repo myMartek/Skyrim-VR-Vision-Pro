@@ -13,7 +13,7 @@ func map(_ s: VXSettings) -> [String: String] { Dictionary(uniqueKeysWithValues:
         var d = fresh()
         var s = VXSettings(defaults: d, info: [:], environment: [:])
         check(s.renderScale == 0.75 && s.latency == .smart && s.upscale == .metalfx && !s.showHands && !s.startAutomatically && s.predictMs == nil && s.stageEyeHeight == nil, "defaults")
-        check(map(s) == ["VXRT_RENDER_SCALE": "0.75", "VXRT_UPSCALE": "metalfx", "VXRT_GATE": "smart"], "default exports \(map(s))")
+        check(map(s) == ["VXRT_RENDER_SCALE": "0.75", "VXRT_UPSCALE": "metalfx", "VXRT_GATE": "smart", "VXRT_VISMASK": "on", "VXRT_VISMASK_SHAPE": VXEdgeMask.slightShape], "default exports \(map(s))")
 
         // persistence under Klepton's keys, read back by a new store
         s.renderScale = 0.85; s.latency = .throughput; s.upscale = .bilinear; s.showHands = true; s.startAutomatically = true; s.predictMs = 40; s.stageEyeHeight = 1.2
@@ -21,7 +21,7 @@ func map(_ s: VXSettings) -> [String: String] { Dictionary(uniqueKeysWithValues:
         check(d.data(forKey: "klepton.chroma").flatMap { try? JSONDecoder().decode(VXHandsBlob.self, from: $0) }?.handMatting == true, "klepton.chroma blob stored")
         let s2 = VXSettings(defaults: d, info: [:], environment: [:])
         check(s2.renderScale == 0.85 && s2.latency == .throughput && s2.upscale == .bilinear && s2.showHands && s2.startAutomatically && s2.predictMs == 40 && s2.stageEyeHeight == 1.2, "persisted values read back")
-        check(map(s2) == ["VXRT_RENDER_SCALE": "0.85", "VXRT_UPSCALE": "bilinear", "VXRT_GATE": "off", "VXRT_PREDICT_MS": "40", "VXRT_STAGE_EYE_HEIGHT": "1.20"], "exports \(map(s2))")
+        check(map(s2) == ["VXRT_RENDER_SCALE": "0.85", "VXRT_UPSCALE": "bilinear", "VXRT_GATE": "off", "VXRT_PREDICT_MS": "40", "VXRT_STAGE_EYE_HEIGHT": "1.20", "VXRT_VISMASK": "on", "VXRT_VISMASK_SHAPE": VXEdgeMask.slightShape], "exports \(map(s2))")
         s2.predictMs = nil; s2.stageEyeHeight = nil
         check(d.object(forKey: "vxrt.predictMs") == nil && d.object(forKey: "vxrt.stageEyeHeight") == nil, "auto removes the stored value")
 
@@ -115,11 +115,35 @@ func map(_ s: VXSettings) -> [String: String] { Dictionary(uniqueKeysWithValues:
         check(!VXSettings(defaults: d, info: [:], environment: [:]).showHands, "broken blob falls back to the default")
 
         // applying: never replaces a variable the launch set
-        setenv("VXRT_GATE", "one", 1); unsetenv("VXRT_RENDER_SCALE")
+        setenv("VXRT_GATE", "one", 1); unsetenv("VXRT_RENDER_SCALE"); unsetenv("VXRT_VISMASK"); unsetenv("VXRT_VISMASK_SHAPE")
         s = VXSettings(defaults: fresh(), info: [:], environment: [:])
         let r = s.applyEnvironment()
         check(getenv("VXRT_RENDER_SCALE").map { String(cString: $0) } == "0.75" && String(cString: getenv("VXRT_GATE")) == "one", "applyEnvironment keeps launch env")
         check(r.kept == ["VXRT_GATE"], "kept list \(r.kept)")
+
+        // the edge mask: Slight by default (its own shape), Off and Standard leave the shape to the runtime; saved; the Info.plist default
+        // counts before a choice; a launch's VXRT_VISMASK=off wins
+        let md = fresh()
+        let m1 = VXSettings(defaults: md, info: [:], environment: [:])
+        check(m1.edgeMask == .slight, "edge mask default")
+        m1.edgeMask = .off
+        check(map(m1)["VXRT_VISMASK"] == "off" && map(m1)["VXRT_VISMASK_SHAPE"] == nil, "edge mask off exports \(map(m1))")
+        m1.edgeMask = .standard
+        check(map(m1)["VXRT_VISMASK"] == "on" && map(m1)["VXRT_VISMASK_SHAPE"] == nil, "edge mask standard exports \(map(m1))")
+        check(VXSettings(defaults: md, info: [:], environment: [:]).edgeMask == .standard, "edge mask persisted")
+        check(VXSettings(defaults: fresh(), info: ["VXEdgeMaskDefault": "off"], environment: [:]).edgeMask == .off, "edge mask plist default")
+        check(VXSettings(defaults: md, info: ["VXEdgeMaskDefault": "off"], environment: [:]).edgeMask == .standard, "saved beats plist")
+        check(VXSettings(defaults: md, info: [:], environment: ["VXRT_VISMASK": "off"]).edgeMask == .off, "env off wins")
+        let parts = VXEdgeMask.slightShape.split(separator: ",").compactMap { Float($0) }
+        check(parts.count == 5 && parts[0...3].allSatisfy { $0 >= 0 && $0 <= 0.45 } && parts[3] < 0.14, "slight shape is a valid, smaller shape")
+        // the performance panel from the start: off by default, saved, env wins
+        let sd = fresh()
+        let st1 = VXSettings(defaults: sd, info: [:], environment: [:])
+        check(!st1.statsPanel, "stats panel off by default")
+        st1.statsPanel = true
+        check(VXSettings(defaults: sd, info: [:], environment: [:]).statsPanel, "stats panel persisted")
+        check(!VXSettings(defaults: sd, info: [:], environment: ["VXRT_STATS_CARD": "0"]).statsPanel, "stats panel env off")
+        check(VXSettings(defaults: fresh(), info: [:], environment: ["KL_STATS_CARD": "1"]).statsPanel, "stats panel Klepton's env name")
 
         // the launch gate
         check(VXLaunchGate.enabled(info: ["VXStartWindow": "1"], environment: [:], defaultLaunch: true), "gate on")

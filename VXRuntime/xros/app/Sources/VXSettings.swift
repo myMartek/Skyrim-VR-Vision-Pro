@@ -21,6 +21,35 @@ import Foundation
 // Environment as a dictionary so tests can inject one.
 typealias VXEnvironment = [String: String]
 
+// The two languages the app's own window speaks, as Klepton's does (visionos/Sources/KleptonText.swift): English, and German where the
+// device's first preferred language is German. Both versions of a sentence sit where it is used. VXRT_LANG=en|de (or Klepton's KL_LANG)
+// on a launch line overrides the device's choice.
+enum VXText {
+    static let german: Bool = {
+        let env = ProcessInfo.processInfo.environment
+        if let forced = env["VXRT_LANG"] ?? env["KL_LANG"] { return forced.lowercased().hasPrefix("de") }
+        return Locale.preferredLanguages.first?.lowercased().hasPrefix("de") ?? false
+    }()
+}
+func vxT(_ en: String, _ de: String) -> String { VXText.german ? de : en }
+
+// How much of each eye image the game leaves undrawn because the lenses do not show it (the hidden-area mesh the game asks for,
+// VXRT_VISMASK and VXRT_VISMASK_SHAPE: src/vismask_shape.h). The runtime's own shape was measured on one wearer's headset and hides
+// 38 % of the picture; on another headset or fit its bottom edge shows as a black bar. "Slight" hides about half as much at every
+// edge, "Off" nothing (the game then draws the whole picture, at about a third more graphics time).
+enum VXEdgeMask: String, CaseIterable, Identifiable {
+    case off, slight, standard
+    var id: String { rawValue }
+    static let slightShape = "0.07,0.03,0.04,0.06,0.4"
+    var exports: [(String, String)] {
+        switch self {
+        case .off: return [("VXRT_VISMASK", "off")]
+        case .slight: return [("VXRT_VISMASK", "on"), ("VXRT_VISMASK_SHAPE", Self.slightShape)]
+        case .standard: return [("VXRT_VISMASK", "on")]
+        }
+    }
+}
+
 struct VXHandsBlob: Codable, Equatable {
     var handMatting: Bool
     private enum CodingKeys: String, CodingKey { case handMatting }
@@ -82,10 +111,32 @@ enum VXMove: String, CaseIterable, Identifiable {
 // default or a value in a range. Keys are strings of the game's exe (research/2026-11-11-skyrim-vr-gameplay-settings.md). Number ranges: the
 // game's own Min/Max keys exist only for the snap angle and turn speed; the rest are conservative bounds, defaults and units NOT verified.
 struct VXIniSetting: Identifiable {
-    enum Group: String, CaseIterable { case controls = "Controls", comfort = "Comfort", body = "Body", interface = "Interface", teleport = "Teleport" }
+    enum Group: String, CaseIterable {
+        case controls = "Controls", comfort = "Comfort", body = "Body", interface = "Interface", teleport = "Teleport"
+        var title: String {
+            switch self {
+            case .controls: return vxT("Controls", "Steuerung")
+            case .comfort: return vxT("Comfort", "Komfort")
+            case .body: return vxT("Body", "Körper")
+            case .interface: return vxT("Interface", "Anzeigen")
+            case .teleport: return vxT("Teleport", "Teleport")
+            }
+        }
+    }
     enum Kind { case flag, number(range: ClosedRange<Double>, step: Double, unit: String) }
     let id: String, env: String, section: String, key: String, title: String, group: Group, kind: Kind
     var iniName: String { "\(section).\(key)" }
+    // The title in the window's language (VXText).
+    var localizedTitle: String { VXText.german ? (Self.german[id] ?? title) : title }
+    private static let german: [String: String] = [
+        "leftHanded": "Linkshänder", "wandDirection": "In Richtung des Controllers gehen", "alwaysRun": "Immer rennen",
+        "comfortTurning": "Komfort-Vignette beim Drehen", "comfortMoving": "Komfort-Vignette beim Bewegen", "comfortSize": "Größe der Komfort-Vignette",
+        "comfortSneak": "Komfort-Schleichen", "heightOffset": "Versatz der Körperhöhe", "eyeHeight": "Standard-Augenhöhe",
+        "handsSheathed": "Hände zeigen, wenn die Waffen weggesteckt sind", "handsAlways": "Hände immer zeigen",
+        "subtitlesGeneral": "Allgemeine Untertitel", "subtitlesDialogue": "Dialog-Untertitel", "subtitlesSpeaker": "Name des Sprechers in Untertiteln",
+        "compass": "Kompass", "crosshair": "Fadenkreuz", "hudMessages": "HUD-Meldungen",
+        "teleportFade": "Bild beim Teleportieren abblenden", "teleportDistance": "Größte Teleport-Entfernung",
+    ]
     static func flag(_ id: String, _ env: String, _ section: String, _ key: String, _ title: String, _ group: Group) -> VXIniSetting {
         VXIniSetting(id: id, env: env, section: section, key: key, title: title, group: group, kind: .flag)
     }
@@ -142,6 +193,8 @@ final class VXSettings: ObservableObject {
     static let moveKey = "vxrt.move"
     static let sharpenKey = "vxrt.sharpen"
     static let renderQualityKey = "vxrt.renderQuality"
+    static let edgeMaskKey = "vxrt.edgeMask"
+    static let statsPanelKey = "vxrt.statsCard"
 
     static let renderScaleRange = 0.5...1.0
     static let renderScaleBuiltIn = 0.75
@@ -177,6 +230,11 @@ final class VXSettings: ObservableObject {
             if let v = renderQuality { defaults.set(v, forKey: Self.renderQualityKey) } else { defaults.removeObject(forKey: Self.renderQualityKey) }
         }
     }
+    // The unseen edge of each eye image the game skips (next launch: the game asks for the mesh once, at start).
+    @Published var edgeMask: VXEdgeMask { didSet { if !suppress { defaults.set(edgeMask.rawValue, forKey: Self.edgeMaskKey) } } }
+    // Whether the performance panel is in the view from the start. Create + Options held for a second shows and hides it at any time
+    // (VXStatsPanel.swift); this is only where it begins.
+    @Published var statsPanel: Bool { didSet { if !suppress { defaults.set(statsPanel, forKey: Self.statsPanelKey) } } }
     // Latency: the pair gate, read per frame, so it applies at once.
     @Published var latency: VXLatency { didSet { if !suppress { defaults.set(latency.rawValue, forKey: Self.latencyKey); Self.latencyHook?(latency) } } }
     // Whether the wearer's real hands and arms show over the game. Live: the immersive scene observes it (VXApp.swift).
@@ -276,6 +334,16 @@ final class VXSettings: ObservableObject {
         sharpen = (environment["VXRT_SHARPEN"].flatMap(Double.init) ?? (defaults.object(forKey: Self.sharpenKey) as? Double)).map { min(max($0, 0), 1) }
         renderQuality = (environment["VXRT_RENDER_QUALITY"].flatMap(Double.init) ?? (defaults.object(forKey: Self.renderQualityKey) as? Double)).map { min(max($0, 0), 1) }
         stageEyeHeight = environment["VXRT_STAGE_EYE_HEIGHT"].flatMap(Double.init) ?? (defaults.object(forKey: Self.eyeHeightKey) as? Double)
+        // The edge mask: env VXRT_VISMASK=off turns it off (a shape given by the launch stays the launch's: exports never replace it),
+        // then the saved choice, then the Info.plist default (VXEdgeMaskDefault), then Slight.
+        var mask: VXEdgeMask = (info["VXEdgeMaskDefault"] as? String).flatMap(VXEdgeMask.init(rawValue:)) ?? .slight
+        if let st = defaults.string(forKey: Self.edgeMaskKey), let v = VXEdgeMask(rawValue: st) { mask = v }
+        if let e = environment["VXRT_VISMASK"] { mask = (e == "off" || e == "0") ? .off : (mask == .off ? .standard : mask) }
+        edgeMask = mask
+        var stats = (info["VXStatsCardDefault"] as? String).map { $0 == "1" } ?? false
+        if let v = defaults.object(forKey: Self.statsPanelKey) as? Bool { stats = v }
+        if let v = Self.flag(environment["VXRT_STATS_CARD"] ?? environment["KL_STATS_CARD"]) { stats = v }
+        statsPanel = stats
         // Gameplay: env VXRT_TURN / VXRT_SNAP_ANGLE / VXRT_TURN_SPEED / VXRT_MOVE, then the saved choice, then the Info.plist default
         // (VXTurnDefault, VXMoveDefault), then .game.
         var t: VXTurn = (info["VXTurnDefault"] as? String).flatMap(VXTurn.init(rawValue:)) ?? .game
@@ -327,6 +395,7 @@ final class VXSettings: ObservableObject {
         if let p = predictMs { out.append(("VXRT_PREDICT_MS", String(format: "%.0f", min(max(p, Self.predictRange.lowerBound), Self.predictRange.upperBound)))) }
         if let v = sharpen, v > 0 { out.append(("VXRT_SHARPEN", String(format: "%.2f", min(max(v, 0), 1)))) }
         if let v = renderQuality { out.append(("VXRT_RENDER_QUALITY", String(format: "%.2f", min(max(v, 0), 1)))) }
+        out += edgeMask.exports
         if let h = stageEyeHeight { out.append(("VXRT_STAGE_EYE_HEIGHT", String(format: "%.2f", min(max(h, Self.eyeHeightRange.lowerBound), Self.eyeHeightRange.upperBound)))) }
         let ini = iniOverrides()
         if !ini.isEmpty { out.append(("VXRT_INI_SET", ini.joined(separator: ";"))) }

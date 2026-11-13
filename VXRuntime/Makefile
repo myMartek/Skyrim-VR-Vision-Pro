@@ -309,7 +309,13 @@ xros-settings-check: tests/xros_settings_test.swift xros/app/Sources/VXSettings.
 	swiftc -parse-as-library -o build/xros_settings_test xros/app/Sources/VXSettings.swift tests/xros_settings_test.swift
 	build/xros_settings_test
 
-check: native-vr-unit-check xros-settings-check xros-mods-check xros-prune-check
+# The two menu buttons' logic for the performance panel (Create + Options), on the Mac.
+xros-stats-chord-check: tests/xros_stats_chord_test.swift xros/app/Sources/VXStatsPanel.swift
+	@mkdir -p build
+	swiftc -D VX_CHORD_TEST -parse-as-library -o build/xros_stats_chord_test xros/app/Sources/VXStatsPanel.swift tests/xros_stats_chord_test.swift
+	build/xros_stats_chord_test
+.PHONY: xros-stats-chord-check
+check: native-vr-unit-check xros-settings-check xros-stats-chord-check xros-mods-check xros-prune-check
 xros-prune-check: tests/xros_prune_test.c xros/app/Sources/vx_prune.h
 	@mkdir -p build
 	clang -Wall -Wextra -Ixros/app/Sources -o build/xros_prune_test tests/xros_prune_test.c

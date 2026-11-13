@@ -126,3 +126,23 @@ Nothing copied verbatim; MIT header and the reference lines are in each new file
 | Latency choice, predict ms, stage eye height, log export | none (ours) | `VXSettings.swift` keys `vxrt.*` |
 
 Not adopted in this change: play area/recentre, controller recovery prompt, frame-rate picker, localisation (`klT`), foveation.
+
+## Performance panel, settings layout and language (2026-11-13, for the AVP Play adapter)
+
+Read in the fork `https://github.com/myMartek/Klepton` at tag `toolchain-890` (SHA-256 of the fork's copies):
+`visionos/Sources/KleptonMetrics.swift` `5918eb5c344d08838a3503e40b197c7d402c949786a984bcbe0f680cea21909c`,
+`runtime/diag/kl_metrics.c` `c7124b02c5d3365c92fc6ad48255c48bc256dac338dad870e3c6bdae6ede028a`,
+`visionos/Sources/KleptonText.swift` `52e4a11771f61b4010b9d25434038a58dd0300cc0123fc10adc1aef318254902`; also `KleptonApp.swift`
+(`PlayerSettingsView`, `settingsPage`), `KleptonCompositor.swift` (the metrics panel) and `KleptonControllers.swift` (`applyPanelChord`).
+
+| Piece | Klepton origin | Local form |
+| --- | --- | --- |
+| The panel's drawing (numbers of the last second, graphs of the last minute) | `KleptonMetrics.swift`, whole file | `VXRuntime/xros/app/Sources/KleptonMetrics.swift`: **copied**, two places marked "VX" (no "Shaders" row or graph where shaders are not counted) |
+| Create + Options held for a second shows and hides the panel; a press reaches the game a quarter of a second late, a tap is replayed, nothing while both are down | `kl_metrics.c` `kl_metrics_chord`, `KleptonControllers.swift` `applyPanelChord` | `VXStatsPanel.swift` `VXMenuChord` (reimplemented in Swift, tested by `tests/xros_stats_chord_test.swift`), applied in `VXNativeXRTracking.publish`; `VXRT_STATS_CARD_BUTTONS=0` (or `KL_STATS_CARD_BUTTONS`) turns it off |
+| The panel in the view, fixed to the head above the middle, drawn off the frame thread once a second | `KleptonCompositor.swift` (`KL_STATS_CARD`) | `VXStatsPanel.swift`: a bitmap copied into each eye's drawable by a blit (as the loading card), 0.72 m wide at 1.2 m; samples from the once-a-second `vr`/`mtp` records; from the start with `VXRT_STATS_CARD=1` (or `KL_STATS_CARD`), Info.plist `VXStatsCardDefault`, setting `vxrt.statsCard` |
+| English and German by the device's first language, both versions where the sentence is used | `KleptonText.swift` `klT` | `VXSettings.swift` `vxT` (`VXRT_LANG` or `KL_LANG` overrides) |
+| Settings in the order and words of Klepton's player settings (Picture, Your hands, ..., Advanced) | `KleptonApp.swift` `PlayerSettingsView`, `settingsPage` | `VXStartView.swift` `VXSettingsPage`; the game's own options moved to a page of their own (`VXGameSettingsPage`) behind a button on top |
+| The unseen edge the game skips, as a choice | Klepton derives its visibility mask from the display's field of view (`kl_openxr.c` `klxr_GetVisibilityMaskKHR`, `KL_XR_VISMASK`) | ours stays the measured rounded rectangle (`src/vismask_shape.h`); new is the setting `vxrt.edgeMask` (off, slight, standard; Info.plist `VXEdgeMaskDefault`), default slight |
+
+Not adopted: play area and room measuring, the frame-rate picker, frame generation, the tap of Create + Options (MetalFX on and off).
+
