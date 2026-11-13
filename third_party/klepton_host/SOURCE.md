@@ -144,5 +144,12 @@ Read in the fork `https://github.com/myMartek/Klepton` at tag `toolchain-890` (S
 | Settings in the order and words of Klepton's player settings (Picture, Your hands, ..., Advanced) | `KleptonApp.swift` `PlayerSettingsView`, `settingsPage` | `VXStartView.swift` `VXSettingsPage`; the game's own options moved to a page of their own (`VXGameSettingsPage`) behind a button on top |
 | The unseen edge the game skips, as a choice | Klepton derives its visibility mask from the display's field of view (`kl_openxr.c` `klxr_GetVisibilityMaskKHR`, `KL_XR_VISMASK`) | ours stays the measured rounded rectangle (`src/vismask_shape.h`); new is the setting `vxrt.edgeMask` (off, slight, standard; Info.plist `VXEdgeMaskDefault`), default slight |
 
+| A foveated drawable with the render-quality ceiling, set only together with foveation; the running quality only where a ceiling was configured; a pass into the drawable sets the eye's rate map and viewport | `KleptonCompositor.swift` `KleptonStageConfiguration.makeConfiguration`, `applyRenderQuality`, `encodeViews` (`pass.rasterizationRateMap`) | `VXApp.swift` `VXLayerConfiguration`, `VXOverlay.swift` `VXDisplay`, `src/native_vr_present.m` `vx_xros_native_set_eye_raster`; one texture an eye (dedicated layout) with one map a view, no vertex amplification needed; setting `vxrt.foveation` (default on, `VXRT_FOVEATION`) |
+| A base resolution for the game's picture that does not follow the drawable ("Max resolution per eye", `KleptonEyeMax.swift`) | idea only | `VXSettings.baseSize`, `vxrt.baseResolution` (standard 2048, 2560 to 4096; `VXRT_BASE_RESOLUTION`): the width offered to `vx_xros_fixture_offer`, height from the eye's field of view |
+
 Not adopted: play area and room measuring, the frame-rate picker, frame generation, the tap of Create + Options (MetalFX on and off).
+
+The old "Display quality" setting (`VXRT_RENDER_QUALITY` as a slider) is gone from the settings: without foveation Compositor Services
+refuses a render-quality ceiling and the layer fails, which ended the app at start on a Vision Pro M5 with visionOS 27.3 (two launches,
+2026-11-13, the log ends at `render_quality_config`). The variable still names the quality asked for with foveation (default 1.0).
 

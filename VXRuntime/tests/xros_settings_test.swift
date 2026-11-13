@@ -145,6 +145,26 @@ func map(_ s: VXSettings) -> [String: String] { Dictionary(uniqueKeysWithValues:
         check(!VXSettings(defaults: sd, info: [:], environment: ["VXRT_STATS_CARD": "0"]).statsPanel, "stats panel env off")
         check(VXSettings(defaults: fresh(), info: [:], environment: ["KL_STATS_CARD": "1"]).statsPanel, "stats panel Klepton's env name")
 
+        // foveated display: on by default, saved, env wins; the base resolution: standard by default, only offered values are kept
+        let fd = fresh()
+        let f1 = VXSettings(defaults: fd, info: [:], environment: [:])
+        check(f1.foveation && f1.baseResolution == 0, "foveation on, base standard by default")
+        f1.foveation = false; f1.baseResolution = 3072
+        let f2 = VXSettings(defaults: fd, info: [:], environment: [:])
+        check(!f2.foveation && f2.baseResolution == 3072, "foveation and base persisted")
+        check(VXSettings(defaults: fd, info: [:], environment: ["VXRT_FOVEATION": "1", "VXRT_BASE_RESOLUTION": "2560"]).foveation, "foveation env wins")
+        check(VXSettings(defaults: fd, info: [:], environment: ["VXRT_BASE_RESOLUTION": "2560"]).baseResolution == 2560, "base env wins")
+        check(VXSettings(defaults: fresh(), info: [:], environment: ["VXRT_BASE_RESOLUTION": "1234"]).baseResolution == 0, "an unknown base is the standard")
+        f2.baseResolution = 0
+        check(fd.object(forKey: "vxrt.baseResolution") == nil, "standard removes the stored base")
+        // the size the game is told: the texture itself without foveation and without a choice; otherwise the chosen width, square pixels
+        // over the eye's field of view
+        check(VXSettings.baseSize(choice: 0, foveated: false, texture: (2048, 1984), fieldOfView: (2.2, 2.0)) == (2048, 1984), "base: unchanged without foveation")
+        check(VXSettings.baseSize(choice: 0, foveated: true, texture: (2496, 2432), fieldOfView: (2.2, 2.0)) == (2048, 1862), "base: standard with foveation")
+        check(VXSettings.baseSize(choice: 3072, foveated: true, texture: (2496, 2432), fieldOfView: (2.2, 2.0)) == (3072, 2794), "base: chosen with foveation")
+        check(VXSettings.baseSize(choice: 2560, foveated: false, texture: (2048, 1984), fieldOfView: (2.0, 2.0)) == (2560, 2560), "base: chosen without foveation")
+        check(VXSettings.baseSize(choice: 2560, foveated: true, texture: (2048, 1984), fieldOfView: (0, 0)) == (2048, 1984), "base: no field of view, the texture")
+
         // the launch gate
         check(VXLaunchGate.enabled(info: ["VXStartWindow": "1"], environment: [:], defaultLaunch: true), "gate on")
         check(!VXLaunchGate.enabled(info: ["VXStartWindow": "1"], environment: [:], defaultLaunch: false), "explicit -test/-game: no gate")

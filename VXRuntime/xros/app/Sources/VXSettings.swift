@@ -194,6 +194,12 @@ final class VXSettings: ObservableObject {
     static let sharpenKey = "vxrt.sharpen"
     static let renderQualityKey = "vxrt.renderQuality"
     static let edgeMaskKey = "vxrt.edgeMask"
+    static let foveationKey = "vxrt.foveation"
+    static let baseResolutionKey = "vxrt.baseResolution"
+    /// The base resolutions offered: 0 is the standard (the display's own picture without foveation, 2048 with it), the others the width
+    /// of each eye's picture in pixels; its height follows the display's shape.
+    static let baseResolutions = [0, 2048, 2560, 3072, 3584, 4096]
+    static let baseResolutionStandard = 2048
     static let statsPanelKey = "vxrt.statsCard"
 
     static let renderScaleRange = 0.5...1.0
@@ -232,6 +238,17 @@ final class VXSettings: ObservableObject {
     }
     // The unseen edge of each eye image the game skips (next launch: the game asks for the mesh once, at start).
     @Published var edgeMask: VXEdgeMask { didSet { if !suppress { defaults.set(edgeMask.rawValue, forKey: Self.edgeMaskKey) } } }
+    // Whether the display's picture is foveated: sharp where the eye looks, coarser at the edge, which is what lets the system give the
+    // app its high-resolution picture at all (CompositorServices accepts a higher render quality only with foveation). Next launch.
+    @Published var foveation: Bool { didSet { if !suppress { defaults.set(foveation, forKey: Self.foveationKey) } } }
+    // The base resolution: the width of the picture each eye is drawn for, of which Resolution is a share and which MetalFX enlarges to
+    // (0 = standard). Independent of the display's own picture, as "Max resolution per eye" is in Klepton's games. Next launch.
+    @Published var baseResolution: Int {
+        didSet {
+            guard !suppress else { return }
+            if baseResolution > 0 { defaults.set(baseResolution, forKey: Self.baseResolutionKey) } else { defaults.removeObject(forKey: Self.baseResolutionKey) }
+        }
+    }
     // Whether the performance panel is in the view from the start. Create + Options held for a second shows and hides it at any time
     // (VXStatsPanel.swift); this is only where it begins.
     @Published var statsPanel: Bool { didSet { if !suppress { defaults.set(statsPanel, forKey: Self.statsPanelKey) } } }
@@ -340,6 +357,14 @@ final class VXSettings: ObservableObject {
         if let st = defaults.string(forKey: Self.edgeMaskKey), let v = VXEdgeMask(rawValue: st) { mask = v }
         if let e = environment["VXRT_VISMASK"] { mask = (e == "off" || e == "0") ? .off : (mask == .off ? .standard : mask) }
         edgeMask = mask
+        var fove = (info["VXFoveationDefault"] as? String).map { $0 != "0" } ?? true
+        if let v = defaults.object(forKey: Self.foveationKey) as? Bool { fove = v }
+        if let v = Self.flag(environment["VXRT_FOVEATION"]) { fove = v }
+        foveation = fove
+        var base = (info["VXBaseResolutionDefault"] as? String).flatMap(Int.init) ?? 0
+        if let v = defaults.object(forKey: Self.baseResolutionKey) as? Int { base = v }
+        if let v = environment["VXRT_BASE_RESOLUTION"].flatMap(Int.init) { base = v }
+        baseResolution = Self.baseResolutions.contains(base) ? base : 0
         var stats = (info["VXStatsCardDefault"] as? String).map { $0 == "1" } ?? false
         if let v = defaults.object(forKey: Self.statsPanelKey) as? Bool { stats = v }
         if let v = Self.flag(environment["VXRT_STATS_CARD"] ?? environment["KL_STATS_CARD"]) { stats = v }
@@ -366,6 +391,17 @@ final class VXSettings: ObservableObject {
         }
         iniValues = vals
         suppress = false
+    }
+
+    /// The size of the picture each eye is drawn for. Without foveation and without a choice it is the display's own texture, exactly as
+    /// before there was a choice. Otherwise the chosen width (standard: 2048), with the height that gives square pixels over the eye's
+    /// field of view (`fieldOfView`: its width and height in tangents); a foveated display's own texture says nothing about either.
+    static func baseSize(choice: Int, foveated: Bool, texture: (w: Int, h: Int), fieldOfView: (w: Double, h: Double)) -> (w: Int, h: Int) {
+        guard choice > 0 || foveated else { return texture }
+        guard fieldOfView.w > 0, fieldOfView.h > 0 else { return texture }
+        let w = choice > 0 ? choice : baseResolutionStandard
+        let h = Int((Double(w) * fieldOfView.h / fieldOfView.w).rounded())
+        return (w, (h + 1) & ~1)
     }
 
     static func num(_ v: Double, _ r: ClosedRange<Double>) -> String {

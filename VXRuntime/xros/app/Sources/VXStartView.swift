@@ -192,13 +192,24 @@ struct VXSettingsPage: View {
                     GroupBox(vxT("Picture", "Bild")) {
                         VStack(alignment: .leading, spacing: 10) {
                             HStack {
+                                Text(vxT("Base resolution per eye", "Basisauflösung je Auge"))
+                                Spacer()
+                                Picker(vxT("Base resolution per eye", "Basisauflösung je Auge"), selection: $settings.baseResolution) {
+                                    ForEach(VXSettings.baseResolutions, id: \.self) { v in
+                                        Text(v == 0 ? "Standard (\(VXSettings.baseResolutionStandard))" : "\(v)").tag(v)
+                                    }
+                                }.labelsHidden()
+                            }
+                            note(vxT("The width in pixels of the picture each eye is drawn for; Resolution below is a share of it, and MetalFX enlarges to it. Higher is sharper and costs graphics time: the game draws about as many more pixels as the number grows, squared.",
+                                     "Die Breite in Pixeln des Bildes, für das jedes Auge gezeichnet wird; die Auflösung darunter ist ein Anteil davon, und MetalFX vergrößert darauf. Höher ist schärfer und kostet Grafikzeit: Das Spiel zeichnet etwa so viel mehr Pixel, wie die Zahl wächst, im Quadrat."))
+                            HStack {
                                 Text(vxT("Resolution", "Auflösung"))
                                 Slider(value: Binding(get: { settings.renderScale }, set: { settings.renderScale = VXSettings.clampScale($0) }),
                                        in: VXSettings.renderScaleRange, step: 0.05)
                                 Text(String(format: "%.0f%%", settings.renderScale * 100)).font(.system(.body, design: .monospaced)).frame(width: 70)
                             }
-                            note(vxT("The size the game draws each eye at, as a share of the display's. Lower runs more smoothly, higher is sharper. 75% with MetalFX is the default.",
-                                     "Die Größe, in der das Spiel jedes Auge zeichnet, als Anteil der Anzeige. Niedriger läuft flüssiger, höher ist schärfer. Üblich sind 75 % mit MetalFX."))
+                            note(vxT("How finely the game is drawn, as a share of the base resolution. Lower it if the picture stutters when you look around. With MetalFX on, the size it enlarges. 75% is the default.",
+                                     "Wie fein das Spiel gezeichnet wird, als Anteil der Basisauflösung. Verringern, wenn das Bild beim Umsehen ruckelt. Mit MetalFX die Größe, die es vergrößert. Üblich sind 75 %."))
                             Picker(vxT("Upscaling", "Hochskalieren"), selection: $settings.upscale) {
                                 Text("MetalFX").tag(VXUpscale.metalfx)
                                 Text(vxT("Plain", "Einfach")).tag(VXUpscale.bilinear)
@@ -288,17 +299,9 @@ struct VXSettingsPage: View {
                 }
                 note(vxT("A light sharpening pass on the final picture. Off by default; about 0.35 is a start.",
                          "Ein leichtes Nachschärfen des fertigen Bildes. Üblicherweise aus; etwa 0,35 ist ein Anfang."))
-                Toggle(vxT("Display quality: system default", "Anzeigequalität: Vorgabe des Systems"),
-                       isOn: Binding(get: { settings.renderQuality == nil }, set: { settings.renderQuality = $0 ? nil : 1.0 }))
-                if let q = settings.renderQuality {
-                    HStack {
-                        Text(vxT("Display quality", "Anzeigequalität"))
-                        Slider(value: Binding(get: { q }, set: { settings.renderQuality = $0 }), in: VXSettings.unitRange, step: 0.05)
-                        Text(String(format: "%.2f", q)).font(.system(.body, design: .monospaced)).frame(width: 70)
-                    }
-                }
-                note(vxT("The size of the picture the system gives the app to fill. Higher is finer but heavier; the game's own size is a share of it, so lower Resolution to match.",
-                         "Die Größe des Bildes, das das System der App zum Füllen gibt. Höher ist feiner, aber schwerer; die Größe des Spiels ist ein Anteil davon, also die Auflösung passend senken."))
+                Toggle(vxT("High-resolution display", "Hochauflösende Anzeige"), isOn: $settings.foveation)
+                note(vxT("How the finished picture is handed to the headset: at full sharpness where you look, as every other AVP Play game does it. This is not the game's own foveated rendering, and it does not change what the game draws. Off, the headset takes only a plain picture of about 2000 pixels an eye; the base resolution still counts, but less of it is seen. Turn it off only if the picture looks warped or the game does not start.",
+                         "Wie das fertige Bild an das Headset übergeben wird: in voller Schärfe dort, wohin du schaust, so wie bei jedem anderen AVP-Play-Spiel. Das ist nicht das Foveated Rendering des Spiels und ändert nicht, was das Spiel zeichnet. Aus nimmt das Headset nur ein einfaches Bild von rund 2000 Pixeln je Auge an; die Basisauflösung zählt weiter, aber man sieht weniger davon. Nur ausschalten, wenn das Bild verzerrt aussieht oder das Spiel nicht startet."))
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
         GroupBox(vxT("Controller alignment", "Controller-Ausrichtung")) {

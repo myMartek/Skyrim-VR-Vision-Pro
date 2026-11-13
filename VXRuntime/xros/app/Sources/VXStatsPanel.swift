@@ -5,9 +5,9 @@
 // Adapted from Klepton (MIT, Copyright (c) 2026 Max Thomas and contributors; fork https://github.com/myMartek/Klepton, tag toolchain-890; license
 // text third_party/klepton_openxr/LICENSE): the button logic is runtime/diag/kl_metrics.c kl_metrics_chord, the idea and the placement
 // visionos/Sources/KleptonCompositor.swift (the metrics panel, KL_STATS_CARD), the drawing KleptonMetrics.swift (copied beside this file).
-// Different here: the panel is a bitmap copied into each eye's drawable by a blit (as the loading card, VXLoading.swift), not a
-// textured quad, because this app's eye images are written by the runtime's presenter; and the samples come from the records the
-// app logs once a second anyway (VXImmersive.report).
+// Different here: the panel is a quad of its own pass over each eye's finished picture (VXOverlay.swift; through the drawable's rate
+// map when it is foveated), because this app's eye images are written by the runtime's presenter; and the samples come from the
+// records the app logs once a second anyway (VXImmersive.report).
 //
 // A meter must not be what it measures: until the panel is first shown nothing of it exists; the picture is drawn once a second on a
 // queue of its own into the buffer no frame is reading, and a frame only copies it.
@@ -81,12 +81,13 @@ final class VXStatsPanel {
     private var chord = VXMenuChord()
     private var shown = false
     private var samples: [KLMetricsSample] = []
-    private var front: MTLBuffer?, back: MTLBuffer?
+    private var front: MTLTexture?, back: MTLTexture?   // two, swapped when the new picture is complete: a frame never samples the one being written
     private var size = (w: 0, h: 0)                 // of front and back
     private var wanted = (w: 0, h: 0)
     private var device: MTLDevice?
     private var drawing = false
     private let queue = DispatchQueue(label: "vxrt.metrics", qos: .utility)
+    private let quad = VXOverlayQuad()
 
     var visible: Bool { lock.lock(); defer { lock.unlock() }; return shown }
 
@@ -128,64 +129,56 @@ final class VXStatsPanel {
         guard !drawing, wanted.w > 0, let device = device else { lock.unlock(); return }
         drawing = true
         let want = wanted, list = samples
-        var target = back
-        if size.w != want.w || size.h != want.h { target = nil }
+        var target = size.w == want.w && size.h == want.h ? back : nil
         lock.unlock()
         queue.async { [self] in
-            var fresh = false
-            if target == nil { target = device.makeBuffer(length: want.w * want.h * 4, options: .storageModeShared); fresh = true }
-            if let buf = target { Self.render(list, into: buf, width: want.w, height: want.h) }
+            if target == nil { target = VXOverlayQuad.makeTexture(device, width: want.w, height: want.h) }
+            if let tex = target { Self.render(list, into: tex, width: want.w, height: want.h) }
             lock.lock()
-            if let buf = target {
-                if fresh {
-                    // a new size: both buffers are replaced, the second one on the next turn
-                    front = buf; back = nil; size = want
-                } else {
-                    back = front; front = buf
-                }
+            if let tex = target {
+                if size.w != want.w || size.h != want.h { front = tex; back = nil; size = want }   // a new size: the other one follows on the next turn
+                else { back = front; front = tex }
             }
             drawing = false
             lock.unlock()
         }
     }
 
-    private static func render(_ samples: [KLMetricsSample], into buf: MTLBuffer, width w: Int, height h: Int) {
+    private static func render(_ samples: [KLMetricsSample], into tex: MTLTexture, width w: Int, height h: Int) {
         guard let space = CGColorSpace(name: CGColorSpace.sRGB),
-              let ctx = CGContext(data: buf.contents(), width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: space,
-                                  bitmapInfo: CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.noneSkipFirst.rawValue) else { return }
+              let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: space,
+                                  bitmapInfo: CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.premultipliedFirst.rawValue),
+              let data = ctx.data else { return }
         // KLMetricsPanel draws top-down on its layout units (KLMetricsPanel.makeContext does the same for its own bitmap).
         ctx.translateBy(x: 0, y: CGFloat(h)); ctx.scaleBy(x: 1, y: -1)
         let unit = CGFloat(w) / CGFloat(KLMetricsPanel.panelLayout.w)
         ctx.scaleBy(x: unit, y: unit)
         ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
         KLMetricsPanel.drawPanel(ctx, samples: samples)
+        tex.replace(region: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0, withBytes: data, bytesPerRow: w * 4)
     }
 
-    /// Copies the panel into `color` where a point above straight ahead falls in this eye. `view` is the drawable's eye transform (head
-    /// from eye), `projection` its projection (right-up-back). Nothing happens while the panel is hidden or not drawn yet.
-    func encode(cb: MTLCommandBuffer, color: MTLTexture, view: simd_float4x4, projection: simd_float4x4) {
-        guard color.pixelFormat == .bgra8Unorm_srgb || color.pixelFormat == .bgra8Unorm else { return }
-        let pxPerMeter = projection.columns.0.x * Float(color.width) / (2 * Self.distanceMeters)
-        var w = Int(Self.widthMeters * pxPerMeter) & ~1
-        w = min(w, KLMetricsPanel.panelPixels.w, color.width - 16)
+    /// Draws the panel over `color` where a point above straight ahead falls in this eye. `view` is the drawable's eye transform (head
+    /// from eye), `projection` its projection (right-up-back), `map` and `viewport` the eye's (VXDisplay.raster). Nothing happens while
+    /// the panel is hidden or not drawn yet.
+    func encode(cb: MTLCommandBuffer, color: MTLTexture, view: simd_float4x4, projection: simd_float4x4,
+                map: MTLRasterizationRateMap?, viewport: MTLViewport) {
+        let shape = SIMD2<Float>(Self.widthMeters, Self.widthMeters * Float(KLMetricsPanel.panelLayout.h) / Float(KLMetricsPanel.panelLayout.w))
+        let displayWidth = map != nil && viewport.width > 0 ? viewport.width : Double(color.width)
+        guard let at = VXOverlayQuad.place(size: shape, distance: Self.distanceMeters, raise: Self.raiseMeters, view: view,
+                                           projection: projection, displayWidth: displayWidth) else { return }
+        // as many pixels as the panel gets on the display, up to the size it is laid out on
+        let w = min(max(at.pixels & ~1, 240), KLMetricsPanel.panelPixels.w)
         let h = w * KLMetricsPanel.panelLayout.h / KLMetricsPanel.panelLayout.w
-        guard w >= 240, h < color.height - 16 else { return }
         lock.lock()
         guard shown else { lock.unlock(); return }
         let fresh = wanted.w != w || wanted.h != h || device == nil
         if fresh { wanted = (w, h); device = cb.device }
-        let buf = size.w == w && size.h == h ? front : nil
+        let tex = front
         lock.unlock()
-        if fresh || buf == nil { redraw() }
-        guard let buf = buf else { return }
-        let p = projection * (view.inverse * SIMD4<Float>(0, Self.raiseMeters, -Self.distanceMeters, 1))
-        guard p.w > 0 else { return }
-        let cx = Int((p.x / p.w * 0.5 + 0.5) * Float(color.width)), cy = Int((1 - (p.y / p.w * 0.5 + 0.5)) * Float(color.height))
-        let ox = max(0, min(color.width - w, cx - w / 2)), oy = max(0, min(color.height - h, cy - h / 2))
-        guard let blit = cb.makeBlitCommandEncoder() else { return }
-        blit.copy(from: buf, sourceOffset: 0, sourceBytesPerRow: w * 4, sourceBytesPerImage: w * h * 4, sourceSize: MTLSize(width: w, height: h, depth: 1),
-                  to: color, destinationSlice: 0, destinationLevel: 0, destinationOrigin: MTLOrigin(x: ox, y: oy, z: 0))
-        blit.endEncoding()
+        if fresh || tex == nil { redraw() }
+        guard let tex = tex else { return }
+        quad.draw(cb: cb, color: color, texture: tex, centre: at.centre, half: at.half, map: map, viewport: viewport)
     }
 
     // ---- the sample ------------------------------------------------------------------------------------------------------------
@@ -252,11 +245,13 @@ final class VXStatsPanel {
         s.thermal = ProcessInfo.processInfo.thermalState.rawValue
         let settings = VXSettings.shared
         let scale = settings.renderScale
-        s.outW = drawable.w; s.outH = drawable.h
-        s.eyeW = Int((Double(drawable.w) * scale).rounded()); s.eyeH = Int((Double(drawable.h) * scale).rounded())
+        // the picture the game is asked for is a share of the base (VXDisplay.base: the display's own texture, or the chosen width)
+        let base = VXDisplay.base ?? drawable
+        s.outW = base.w; s.outH = base.h
+        s.eyeW = Int((Double(base.w) * scale).rounded()); s.eyeH = Int((Double(base.h) * scale).rounded())
         s.upscale = settings.upscale == .metalfx ? (scale < 0.999 ? 2 : 1) : 0
         if s.upscale == 1 { s.upscaleNote = "nothing to upscale at 100 %" }
-        s.path = "D3D11 on Metal · OpenVR"
+        s.path = VXDisplay.foveated ? "D3D11 on Metal · foveated display" : "D3D11 on Metal · plain display"
         note(s)
     }
 }
