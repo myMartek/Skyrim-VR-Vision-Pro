@@ -260,6 +260,7 @@ func map(_ s: VXSettings) -> [String: String] { Dictionary(uniqueKeysWithValues:
         check(VXGameLanguage.iniSet(.pl, hasVoices: true, archiveList: nil).map(\.key) == ["General.sLanguage", "Fonts.sFontConfigFile", "Archive.sResourceArchiveList2"], "language: Polish keys")
         check(VXGameLanguage.iniSet(.zh, hasVoices: true, archiveList: nil).map { "\($0.key)=\($0.value)" } == ["General.sLanguage=CHINESE"] && VXGameLanguage.zh.voiceArchive == nil, "language: Chinese keeps the English voices")
         check(VXGameLanguage.iniSet(.ja, hasVoices: true, archiveList: nil)[1].value.hasPrefix("Skyrim - Voices_ja0.bsa, "), "language: Japanese voices")
+        check(VXSettings.logText("Fonts.sFontConfigFile=Interface\\FontConfig_ru.txt \"x\"") == "Fonts.sFontConfigFile=Interface\\\\FontConfig_ru.txt \\\"x\\\"", "language: log text escaped")
         // the files of a pack that carry a game file's name: placed in the overlay for the language in use, taken out for another,
         // a mod's file of the same name left alone, an emptied pack file removed
         let lr = NSTemporaryDirectory() + "vxrt-langpack-\(UUID().uuidString)"

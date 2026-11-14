@@ -30,7 +30,7 @@ final class VXLauncher: ObservableObject {
     func start(openDisplay: () -> Void) {
         guard !started else { return }
         let r = VXSettings.shared.applyEnvironment()
-        vxrt_jlog("settings_applied", "\"set\":\"\(r.set.joined(separator: " "))\",\"kept\":\"\(r.kept.joined(separator: " "))\"")
+        vxrt_jlog("settings_applied", "\"set\":\"\(VXSettings.logText(r.set.joined(separator: " ")))\",\"kept\":\"\(r.kept.joined(separator: " "))\"")
         VXStatsPanel.shared.setVisible(VXSettings.shared.statsPanel, why: "setting")
         phase = .started
         startedAt = Date()

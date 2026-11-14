@@ -720,6 +720,8 @@ final class VXSettings: ObservableObject {
         return out
     }
 
+    /// A value as it may stand inside a JSON string of the host log (the font key's value has a backslash).
+    static func logText(_ s: String) -> String { s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") }
     // Before the program starts (never later: the runtime reads these once, lazily). Returns what was set and what was left to the launch.
     @discardableResult
     func applyEnvironment() -> (set: [String], kept: [String]) {
