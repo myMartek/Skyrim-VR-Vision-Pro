@@ -432,16 +432,27 @@ struct VXGameSettingsPage: View {
     private static var gameDefault: String { vxT("Game default", "Wie im Spiel") }
     // What the next start will be in, and whether that language's voices are installed.
     private var languageNote: String {
-        guard let language = settings.effectiveGameLanguage else {
-            return vxT("Nothing is chosen: the game starts in English. Texts exist for every language in this list. The voices of another language are a download of their own: in AVP Play, pick the language on the game's page and install again.",
-                       "Nichts gewählt: Das Spiel startet auf Englisch. Texte gibt es für jede Sprache in dieser Liste. Die Sprachausgabe einer anderen Sprache ist ein eigener Download: in AVP Play auf der Seite des Spiels die Sprache wählen und erneut installieren.")
+        let pack = vxT(" In AVP Play, pick the language on the game's page and install again.",
+                       " In AVP Play auf der Seite des Spiels die Sprache wählen und erneut installieren.")
+        let picked = settings.gameLanguage
+        if picked != .auto, !settings.canUse(picked) {
+            return vxT("\(picked.ownName) exists only with its language pack, which is not installed: the game starts in English.",
+                       "\(picked.ownName) gibt es nur mit seinem Sprachpaket, und das ist nicht installiert: Das Spiel startet auf Englisch.") + pack
         }
-        let chosen = settings.gameLanguage == .auto ? vxT("Automatic: ", "Automatisch: ") : ""
+        guard let language = settings.effectiveGameLanguage else {
+            return vxT("Nothing is chosen: the game starts in English. The voices of another language are a download of their own.",
+                       "Nichts gewählt: Das Spiel startet auf Englisch. Die Sprachausgabe einer anderen Sprache ist ein eigener Download.") + pack
+        }
+        let chosen = picked == .auto ? vxT("Automatic: ", "Automatisch: ") : ""
+        if language == .zh {
+            return chosen + vxT("\(language.ownName) texts with the English voices (the game has no Chinese voices).",
+                                "Texte auf \(language.ownName), Stimmen auf Englisch (das Spiel hat keine chinesische Sprachausgabe).")
+        }
         if language == .en || settings.hasVoices(language) {
             return chosen + vxT("\(language.ownName), texts and voices.", "\(language.ownName), Texte und Sprachausgabe.")
         }
-        return chosen + vxT("\(language.ownName) texts with the English voices: this language's voices are not installed. In AVP Play, pick the language on the game's page and install again (about 2 GB).",
-                            "Texte auf \(language.ownName), Stimmen auf Englisch: Die Sprachausgabe dieser Sprache ist nicht installiert. In AVP Play auf der Seite des Spiels die Sprache wählen und erneut installieren (rund 2 GB).")
+        return chosen + vxT("\(language.ownName) texts with the English voices: this language's voices are not installed (about 2 GB).",
+                            "Texte auf \(language.ownName), Stimmen auf Englisch: Die Sprachausgabe dieser Sprache ist nicht installiert (rund 2 GB).") + pack
     }
 
     var body: some View {

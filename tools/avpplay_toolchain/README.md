@@ -46,18 +46,27 @@ run by hand are not repeated.
 
 ## Language
 
-The game has no language menu; Steam installs a language by replacing `Skyrim.ini` and adding one voice archive. Here one
-set of game files serves every language:
+The game has no language menu; Steam installs a language by replacing `Skyrim.ini` and adding that language's files.
+Here one set of game files serves every language:
 
-- The app has "Game language" under its game options (English, Deutsch, Français, Italiano, Español, Polski, Русский, or
-  automatic). It overrides `sLanguage` and the voice archive in `sResourceArchiveList2` when the game starts
-  (`VXGameLanguage` in `VXRuntime/xros/app/Sources/VXSettings.swift`); the texts of these languages are in the game's data.
+- The app has "Game language" under its game options (automatic, English, Deutsch, Français, Italiano, Español,
+  Polski, Русский, 日本語, 繁體中文). When the game starts it overrides the keys in which that language's `Skyrim.ini`
+  differs: `sLanguage`, the voice archive in `sResourceArchiveList2`, and for Polish and Russian the font table
+  (`VXGameLanguage` in `VXRuntime/xros/app/Sources/VXSettings.swift`).
 - `KLEPTON_GAME_LANGUAGE` (AVP Play's game language: `device`, `en`, `de_DE`, ...) is what "automatic" means while
   nothing else decides; `run.sh` passes it into the app's Info.plist (`VXGameLanguageDefault`).
-- The voices of a language other than English are `Data/Skyrim - Voices_<code>0.bsa` from that language's Steam depot
-  (German: depot 611676, 2.0 GB). The installer copies the file to `Documents/root/SkyrimVR/Data` (AVP Play: a recipe
-  file with a locale); the adapter has no part in it. One installed voice archive makes that language the automatic
-  choice; without the file a language's texts go with the English voices. An empty file counts as absent.
+- The texts of English, German, French, Italian, Spanish, Polish and Russian are in the game's data. Everything else
+  is in that language's Steam depot, and the installer copies it (AVP Play: recipe files with a locale); the adapter
+  has no part in it:
+  - the voices, `Skyrim - Voices_<code>0.bsa`, into `Documents/root/SkyrimVR/Data` (German: depot 611676, 2.0 GB).
+    Without them a language's texts go with the English voices;
+  - files that carry the name of one of the game's own (Japanese and Chinese: `Skyrim - Interface.bsa`,
+    `Skyrim - Patch.bsa`, `Skyrim_VR - Main.bsa`, their texts and fonts; Polish: one strings file) into
+    `Documents/root/lang/<code>/Data`. The app links those of the language in use into the game's overlay before the
+    game starts and takes them out for another language (`VXGameLanguage.activate`; what it placed is listed in
+    `root/lang/active.txt`, a mod's file of the same name is left alone). Japanese and Chinese exist only with them.
+- One installed pack makes that language the automatic choice. An empty file counts as absent (AVP Play empties a
+  file that is no longer chosen).
 
 ## Mods
 
