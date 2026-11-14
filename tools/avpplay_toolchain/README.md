@@ -37,7 +37,9 @@ run by hand are not repeated.
 
 - Mods (`mods-fetch`, `mods`, `skse-capture`): the app is built from plain Skyrim VR. A pack made by hand with
   `tools/vxrt_build.py mods` is picked up by the `app` stage as before.
-- The icon and start picture AVP Play writes to `visionos/Assets.xcassets` are not used; the app keeps its own icon.
+- The icon AVP Play writes to `visionos/Assets.xcassets` is not used; the app keeps its own. (The start picture is:
+  `run.sh` copies `StartHero-skyrimvr.imageset/hero.png` into the app's resources as `bundle/StartHero.png`, and the
+  start window shows it behind the title. It is the player's own picture and never part of this repository.)
 - Saved games: AVP Play backs up `Documents/android-files` only. The game writes under
   `Documents/root/overlay_skyrimvr` (`targets.py` names it as `saves` for a later change in AVP Play).
 - Free Apple teams cannot sign the app (extended virtual addressing); `run.sh` says so.

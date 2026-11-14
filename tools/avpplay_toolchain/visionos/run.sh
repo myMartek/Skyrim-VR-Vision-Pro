@@ -148,6 +148,14 @@ else
   if [ -d "$PACK" ]; then rm -rf "$PACK.off" && mv "$PACK" "$PACK.off" || die "cannot set the mod pack aside"; fi
   [ ! -f "$STATE" ] || printf '{\n "sets": []\n}\n' > "$STATE"
 fi
+# The start picture AVP Play chose for the game (the player's own: a custom image, or the art of their Steam library) goes into the
+# app's resource folder under one name; the start window shows it behind the title (VXStartView.hero). Written anew each time, so
+# that a changed or withdrawn picture reaches the app (the folder is copied when its own date changes). No picture: none in the app.
+HERO="$HERE/Assets.xcassets/StartHero-$TARGET.imageset/hero.png"
+RES="$REPO/VXRuntime/build/xros-xrizer-fixture/bundle"
+mkdir -p "$RES" && rm -f "$RES/StartHero.png" || die "cannot prepare $RES"
+if [ -f "$HERO" ]; then cp "$HERO" "$RES/StartHero.png" || die "cannot copy the start picture"; say "== skyrimvr: start picture from AVP Play"; fi
+touch "$RES"
 stage app
 
 APP="$REPO/VXRuntime/build/xros-xrizer-fixture/derived/Build/Products/Debug-xros/VXRuntimeHost.app"
