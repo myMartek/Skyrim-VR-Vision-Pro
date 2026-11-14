@@ -101,7 +101,10 @@ export VXRT_LOCAL_ENV=/dev/null
 EXTRA=
 [ -z "${KLEPTON_APP_VERSION:-}" ] || EXTRA="MARKETING_VERSION=$KLEPTON_APP_VERSION"
 [ -z "${KLEPTON_APP_BUILD:-}" ] || EXTRA="$EXTRA CURRENT_PROJECT_VERSION=$KLEPTON_APP_BUILD"
-case "$EXTRA" in *[!A-Za-z0-9._=\ -]*) die "the app version or build stamp has characters a build setting cannot carry";; esac
+# The language a game starts in while nothing is chosen in it: "device", "en" or a language with region (de_DE). The app keeps
+# the first part and knows which languages the game has (VXGameLanguage in VXSettings.swift); another value changes nothing.
+[ -z "${KLEPTON_GAME_LANGUAGE:-}" ] || EXTRA="$EXTRA VXRT_GAME_LANGUAGE=$KLEPTON_GAME_LANGUAGE"
+case "$EXTRA" in *[!A-Za-z0-9._=\ -]*) die "the app version, build stamp or game language has characters a build setting cannot carry";; esac
 export XROS_EXTRA_APP_FLAGS="$EXTRA"
 
 say "== skyrimvr: bundle $BUNDLE, team $TEAM, build folder $VXRT_PRIVATE_ROOT"

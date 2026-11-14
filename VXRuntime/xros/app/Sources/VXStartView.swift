@@ -410,6 +410,19 @@ struct VXGameSettingsPage: View {
 
     private func note(_ text: String) -> some View { Text(text).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
     private static var gameDefault: String { vxT("Game default", "Wie im Spiel") }
+    // What the next start will be in, and whether that language's voices are installed.
+    private var languageNote: String {
+        guard let language = settings.effectiveGameLanguage else {
+            return vxT("Nothing is chosen: the game starts in English. Texts exist for every language in this list. The voices of another language are a download of their own: in AVP Play, pick the language on the game's page and install again.",
+                       "Nichts gewählt: Das Spiel startet auf Englisch. Texte gibt es für jede Sprache in dieser Liste. Die Sprachausgabe einer anderen Sprache ist ein eigener Download: in AVP Play auf der Seite des Spiels die Sprache wählen und erneut installieren.")
+        }
+        let chosen = settings.gameLanguage == .auto ? vxT("Automatic: ", "Automatisch: ") : ""
+        if language == .en || settings.hasVoices(language) {
+            return chosen + vxT("\(language.ownName), texts and voices.", "\(language.ownName), Texte und Sprachausgabe.")
+        }
+        return chosen + vxT("\(language.ownName) texts with the English voices: this language's voices are not installed. In AVP Play, pick the language on the game's page and install again (about 2 GB).",
+                            "Texte auf \(language.ownName), Stimmen auf Englisch: Die Sprachausgabe dieser Sprache ist nicht installiert. In AVP Play auf der Seite des Spiels die Sprache wählen und erneut installieren (rund 2 GB).")
+    }
 
     var body: some View {
         ScrollView {
@@ -417,6 +430,14 @@ struct VXGameSettingsPage: View {
                 Label(vxT("“Game default” changes nothing: the game keeps its own value. Everything here applies the next time you start the game.",
                           "„Wie im Spiel“ ändert nichts: Das Spiel behält seinen eigenen Wert. Alles hier gilt beim nächsten Start des Spiels."),
                       systemImage: "info.circle").font(.callout).foregroundStyle(.secondary)
+                GroupBox(vxT("Game language", "Sprache des Spiels")) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Picker(vxT("Game language", "Sprache des Spiels"), selection: $settings.gameLanguage) {
+                            ForEach([VXGameLanguage.auto] + VXGameLanguage.named) { Text($0.ownName).tag($0) }
+                        }.pickerStyle(.menu).labelsHidden()
+                        note(languageNote)
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                }
                 GroupBox(vxT("Graphics quality", "Grafikqualität")) {
                     VStack(alignment: .leading, spacing: 10) {
                         Picker(vxT("Graphics quality", "Grafikqualität"), selection: $settings.graphics) {
