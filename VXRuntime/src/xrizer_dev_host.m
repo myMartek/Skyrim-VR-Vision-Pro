@@ -322,6 +322,11 @@ static XrQuaternionf dk_head_orientation(void) { return dk_yaw_pitch(dk_float(&d
  * turned with the head's yaw and pointing where it looks; controls from the held keys. */
 static void dk_hands(uint32_t profile, KlNativeInputHand3 out[2]) {
     uint64_t bits[2] = {0, 0}; if (dk.enabled) dk_bits(bits);
+    /* VXRT_XRIZER_DEV_CONTROLLERS_AT=<seconds>: the controllers connect that long after the first sample (a headset's often
+     * connect after the program has started; code that a plugin patches late must not be reached before the plugin did) */
+    static double connect_at = -1; static XrTime first;
+    if (connect_at < 0) { const char *e = getenv("VXRT_XRIZER_DEV_CONTROLLERS_AT"); connect_at = e ? atof(e) : 0; first = now_ns(); }
+    XrBool32 connected = connect_at <= 0 || (double)(now_ns() - first) / 1e9 >= connect_at ? XR_TRUE : XR_FALSE;
     float yaw = dk_float(&dk.yaw_bits), c = cosf(yaw), s = sinf(yaw);
     /* where the head looks, turned further by the hands' aim (right-button drag) */
     XrQuaternionf q = dk_yaw_pitch(yaw + dk_float(&dk.aim_yaw_bits), dk_float(&dk.pitch_bits) + dk_float(&dk.aim_pitch_bits));
@@ -329,7 +334,7 @@ static void dk_hands(uint32_t profile, KlNativeInputHand3 out[2]) {
         float x = i ? .2f : -.2f, sx = (float)(dk_held(bits, i, DK_STICK_RIGHT) - dk_held(bits, i, DK_STICK_LEFT)),
               sy = (float)(dk_held(bits, i, DK_STICK_UP) - dk_held(bits, i, DK_STICK_DOWN));
         if (sx && sy) { sx *= (float)M_SQRT1_2; sy *= (float)M_SQRT1_2; }
-        out[i] = (KlNativeInputHand3){.controls={.connected=XR_TRUE,.trigger=dk_held(bits, i, DK_TRIGGER) ? 1.f : 0.f,.stick_x=sx,.stick_y=sy,
+        out[i] = (KlNativeInputHand3){.controls={.connected=connected,.trigger=dk_held(bits, i, DK_TRIGGER) ? 1.f : 0.f,.stick_x=sx,.stick_y=sy,
                 .primary_pressed=(XrBool32)dk_held(bits, i, DK_PRIMARY),.secondary_pressed=(XrBool32)dk_held(bits, i, DK_SECONDARY),
                 .grip_pressed=(XrBool32)dk_held(bits, i, DK_GRIP),.menu_pressed=(XrBool32)dk_held(bits, i, DK_MENU),
                 .stick_pressed=(XrBool32)dk_held(bits, i, DK_STICK_CLICK)},.profile=profile,
