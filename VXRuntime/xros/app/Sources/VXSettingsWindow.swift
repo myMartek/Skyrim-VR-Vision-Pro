@@ -64,12 +64,12 @@ enum VXHelp {
                                pictures: [("M5", "KLHelp-scene")],
                                note: vxT("A preset sets the picture only; frame rate, smoothness and the game's options stay. ", "Ein Preset setzt nur das Bild; Bildrate, Flüssigkeit und die Optionen des Spiels bleiben. ") + nextStart)
         case "preset.m5.performance":
-            return VXHelpEntry(title: vxT("M5 Performance", "M5 Leistung"),
+            return VXHelpEntry(title: vxT("Performance", "Leistung"),
                                text: vxT("75 % with MetalFX upscaling, from one base resolution smaller (2560 instead of 3072). Skyrim already starts at 75 % with MetalFX, so the smaller base is what makes this lighter: smoother and cooler, a little softer.",
                                          "75 % mit MetalFX-Hochskalieren, von einer kleineren Basisauflösung aus (2560 statt 3072). Skyrim startet schon mit 75 % und MetalFX, deshalb macht die kleinere Basis es leichter: flüssiger und kühler, etwas weicher."),
                                pictures: pair("resolution", vxT("Smaller", "Kleiner"), vxT("Larger", "Größer")), note: nextStart)
         case "preset.m5.quality":
-            return VXHelpEntry(title: vxT("M5 Quality", "M5 Qualität"),
+            return VXHelpEntry(title: vxT("Quality", "Qualität"),
                                text: vxT("The next larger base resolution (3584), the whole picture drawn – no edge left out – and the highest display quality. Sharper, especially at the edges of view and in text; the frame rate may drop in busy places.",
                                          "Die nächstgrößere Basisauflösung (3584), das ganze Bild gezeichnet – kein Rand ausgelassen – und die höchste Anzeigequalität. Schärfer, vor allem am Rand des Blickfelds und bei Schrift; an belebten Orten kann die Bildrate sinken."),
                                pictures: pair("view", vxT("Edge left out", "Rand ausgelassen"), vxT("Whole picture", "Ganzes Bild")), note: nextStart)
@@ -80,8 +80,8 @@ enum VXHelp {
         case "device":
             return VXHelpEntry(title: vxT("Your Vision Pro", "Deine Vision Pro"),
                                text: VXDevice.kind == .m2
-                               ? vxT("A Vision Pro with the M2 chip. Its display runs at up to 100 Hz, so the frame rate choices are 90 and 100. The presets were tuned on an M5 – start from \"M5 Performance\" and save what runs well.",
-                                     "Eine Vision Pro mit M2-Chip. Ihr Display läuft mit bis zu 100 Hz, deshalb stehen bei der Bildrate 90 und 100 zur Wahl. Die Presets sind auf einer M5 abgestimmt – fang mit „M5 Leistung“ an und speichere, was gut läuft.")
+                               ? vxT("A Vision Pro with the M2 chip. Its display runs at up to 100 Hz, so the frame rate choices are 90 and 100. The presets were tuned on an M5 – start from \"Performance\" and save what runs well.",
+                                     "Eine Vision Pro mit M2-Chip. Ihr Display läuft mit bis zu 100 Hz, deshalb stehen bei der Bildrate 90 und 100 zur Wahl. Die Presets sind auf einer M5 abgestimmt – fang mit „Leistung“ an und speichere, was gut läuft.")
                                : vxT("A Vision Pro with the M5 chip, the one the presets were tuned on. Its display runs at up to 120 Hz.",
                                      "Eine Vision Pro mit M5-Chip, auf der die Presets abgestimmt wurden. Ihr Display läuft mit bis zu 120 Hz."))
         case "baseResolution":
@@ -181,42 +181,126 @@ enum VXHelp {
 struct VXHelpPane: View {
     @EnvironmentObject private var focus: VXSettingsFocus
     let pageKey: String
-    @State private var shown = 1
-
-    private static func image(_ name: String) -> UIImage? {
-        Bundle.main.path(forResource: name, ofType: "jpg", inDirectory: "Help").flatMap(UIImage.init(contentsOfFile:))
-    }
+    /// The explanation shown large (the owner's wish, 2026-11-16: "Wenn man drauf klickt kommt ein größeres Bild ebenfalls mit
+    /// der Beschreibung, wo man dann gern wechseln kann zwischen beiden Varianten"). VXRT_SETTINGS_ZOOM=1 opens it from the start.
+    @State private var enlarged: String? = ProcessInfo.processInfo.environment["VXRT_SETTINGS_ZOOM"] == "1"
+        ? ProcessInfo.processInfo.environment["VXRT_SETTINGS_HELP"] : nil
 
     var body: some View {
         let key = focus.key ?? pageKey
-        if let e = VXHelp.entry(key) ?? VXHelp.entry(pageKey) {
+        let shownKey = VXHelp.entry(key) != nil ? key : pageKey
+        if let e = VXHelp.entry(shownKey) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    if !e.pictures.isEmpty {
-                        let i = min(shown, e.pictures.count - 1)
-                        Group {
-                            if let img = Self.image(e.pictures[i].file) { Image(uiImage: img).resizable().scaledToFill() }
-                            else { Rectangle().fill(.gray.opacity(0.25)) }
+                    // A picture only where there is something to compare (the owner's word).
+                    if e.pictures.count >= 2 {
+                        Button { enlarged = shownKey } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                VXHelpPictures(pictures: e.pictures)
+                                Label(vxT("Tap to enlarge", "Zum Vergrößern antippen"), systemImage: "arrow.up.left.and.arrow.down.right")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
                         }
-                        .aspectRatio(16.0 / 10.0, contentMode: .fit)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                        if e.pictures.count > 1 {
-                            Picker(vxT("Compare", "Vergleich"), selection: $shown) {
-                                ForEach(e.pictures.indices, id: \.self) { Text(e.pictures[$0].label).tag($0) }
-                            }.pickerStyle(.segmented).labelsHidden()
-                        }
+                        .buttonStyle(.plain)
+                        .hoverEffect()
                     }
-                    Text(e.title).font(.title3.weight(.semibold))
-                    Text(e.text).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    if let note = e.note { Label(note, systemImage: "arrow.clockwise").font(.footnote).foregroundStyle(.secondary) }
+                    VXHelpText(entry: e)
                 }
                 .padding(20).frame(maxWidth: .infinity, alignment: .leading)
             }
-            .onChange(of: key) { _, _ in shown = 1 }
+            .sheet(isPresented: Binding(get: { enlarged != nil }, set: { if !$0 { enlarged = nil } })) {
+                if let k = enlarged, let big = VXHelp.entry(k) { VXHelpLarge(entry: big) { enlarged = nil } }
+            }
         } else {
             ContentUnavailableView(vxT("Look at a setting", "Schau auf eine Einstellung"), systemImage: "eye",
                                    description: Text(vxT("What it does appears here.", "Hier steht, was sie bewirkt.")))
         }
+    }
+}
+
+struct VXHelpText: View {
+    let entry: VXHelpEntry
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(entry.title).font(.title3.weight(.semibold))
+            Text(entry.text).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if let note = entry.note { Label(note, systemImage: "arrow.clockwise").font(.footnote).foregroundStyle(.secondary) }
+        }
+    }
+}
+
+/// A picture from the app's Help folder, or a quiet placeholder.
+struct VXHelpImage: View {
+    let file: String
+    private static func image(_ name: String) -> UIImage? {
+        Bundle.main.path(forResource: name, ofType: "jpg", inDirectory: "Help").flatMap(UIImage.init(contentsOfFile:))
+    }
+    var body: some View {
+        Group {
+            if let img = Self.image(file) { Image(uiImage: img).resizable().scaledToFill() }
+            else { Rectangle().fill(.gray.opacity(0.25)) }
+        }
+        .aspectRatio(16.0 / 10.0, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+/// One picture, or two as a split picture: the first variant on the left half, the second on the right, named in the corners.
+struct VXHelpPictures: View {
+    let pictures: [(label: String, file: String)]
+    var body: some View {
+        if pictures.count >= 2 {
+            VXHelpImage(file: pictures[1].file)
+                .overlay {
+                    VXHelpImage(file: pictures[0].file)
+                        .mask { GeometryReader { g in Rectangle().frame(width: g.size.width / 2).frame(maxWidth: .infinity, alignment: .leading) } }
+                }
+                .overlay { Rectangle().fill(.white.opacity(0.9)).frame(width: 2) }
+                .overlay(alignment: .bottomLeading) { VXHelpTag(text: pictures[0].label) }
+                .overlay(alignment: .bottomTrailing) { VXHelpTag(text: pictures[1].label) }
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+        } else if let p = pictures.first {
+            VXHelpImage(file: p.file)
+        }
+    }
+}
+
+struct VXHelpTag: View {
+    let text: String
+    var body: some View {
+        Text(text).font(.caption.weight(.semibold))
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(.black.opacity(0.55), in: Capsule())
+            .foregroundStyle(.white)
+            .padding(10)
+    }
+}
+
+/// The large view: the picture big, a switch between its variants, the same words.
+struct VXHelpLarge: View {
+    let entry: VXHelpEntry
+    let close: () -> Void
+    @State private var shown = 0
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            if entry.pictures.count >= 2 {
+                let i = min(shown, entry.pictures.count - 1)
+                VXHelpImage(file: entry.pictures[i].file)
+                    .id(entry.pictures[i].file)
+                    .transition(.opacity)
+                    .overlay(alignment: .bottomLeading) { VXHelpTag(text: entry.pictures[i].label) }
+                    .frame(maxWidth: 880)
+                if entry.pictures.count > 1 {
+                    Picker(vxT("Variant", "Variante"), selection: $shown) {
+                        ForEach(entry.pictures.indices, id: \.self) { Text(entry.pictures[$0].label).tag($0) }
+                    }.pickerStyle(.segmented).labelsHidden().frame(maxWidth: 520).frame(maxWidth: .infinity)
+                }
+            }
+            VXHelpText(entry: entry).frame(maxWidth: 880, alignment: .leading)
+            HStack { Spacer(); Button(vxT("Close", "Schließen"), action: close) }
+        }
+        .padding(28).frame(width: 940)
+        .animation(.easeInOut(duration: 0.2), value: shown)
     }
 }
 
@@ -397,8 +481,8 @@ struct VXPresetsPage: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(vxT("This Vision Pro: ", "Diese Vision Pro: ") + VXDevice.kind.rawValue).font(.headline)
                     Text(VXDevice.kind == .m2
-                         ? vxT("The presets that come with the app were tuned on an M5. Start from \"M5 Performance\", save what runs well as a preset of your own and share it – M2 presets are very welcome.",
-                               "Die mitgelieferten Presets sind auf einer M5 abgestimmt. Fang mit „M5 Leistung“ an, speichere, was gut läuft, als eigenes Preset und teile es – M2-Presets sind ausdrücklich erwünscht.")
+                         ? vxT("The presets that come with the app were tuned on an M5. Start from \"Performance\", save what runs well as a preset of your own and share it – M2 presets are very welcome.",
+                               "Die mitgelieferten Presets sind auf einer M5 abgestimmt. Fang mit „Leistung“ an, speichere, was gut läuft, als eigenes Preset und teile es – M2-Presets sind ausdrücklich erwünscht.")
                          : vxT("The presets that come with the app were tuned on this kind of Vision Pro.",
                                "Die mitgelieferten Presets wurden auf dieser Art Vision Pro abgestimmt."))
                         .font(.callout).foregroundStyle(.secondary)

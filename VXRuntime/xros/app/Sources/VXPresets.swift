@@ -61,14 +61,15 @@ extension VXSettings {
     }
 }
 
+/// In the window's order (the owner's, 2026-11-16): Quality on top, then the standard, then Performance.
 enum VXBuiltInPreset: String, CaseIterable, Identifiable {
-    case standard = "m5", performance = "m5.performance", quality = "m5.quality"
+    case quality = "m5.quality", standard = "m5", performance = "m5.performance"
     var id: String { rawValue }
     var name: String {
         switch self {
         case .standard: return "Vision Pro M5"
-        case .performance: return vxT("M5 Performance", "M5 Leistung")
-        case .quality: return vxT("M5 Quality", "M5 Qualität")
+        case .performance: return vxT("Performance", "Leistung")
+        case .quality: return vxT("Quality", "Qualität")
         }
     }
 }
