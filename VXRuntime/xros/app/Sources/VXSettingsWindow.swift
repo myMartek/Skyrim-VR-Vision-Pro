@@ -265,7 +265,25 @@ struct VXSettingsWindow: View {
     @ObservedObject private var settings = VXSettings.shared
     @ObservedObject private var launcher = VXLauncher.shared
     @StateObject private var focus = VXSettingsFocus()
-    @State private var selection: VXSettingsPageID? = ProcessInfo.processInfo.environment["VXRT_START_GAME_SETTINGS"] == "1" ? .game : .presets
+    @State private var selection: VXSettingsPageID? = Self.startPage
+    /// A scripted launch can open a page and an explanation (VXRT_SETTINGS_PAGE=picture|motion|hands|game|controls|mods|start|advanced|
+    /// diagnostics, VXRT_SETTINGS_HELP=<key>), to photograph them without a hand to tap; VXRT_START_GAME_SETTINGS=1 is the game page.
+    private static var startPage: VXSettingsPageID {
+        let env = ProcessInfo.processInfo.environment
+        if env["VXRT_START_GAME_SETTINGS"] == "1" { return .game }
+        switch env["VXRT_SETTINGS_PAGE"] {
+        case "picture": return .picture
+        case "motion": return .motion
+        case "hands": return .hands
+        case "game": return .game
+        case "controls": return .controls
+        case "mods": return .mods
+        case "start": return .start
+        case "advanced": return .advanced
+        case "diagnostics": return .diagnostics
+        default: return .presets
+        }
+    }
     @State private var generation = 0
 
     private var activeName: String {
@@ -305,7 +323,7 @@ struct VXSettingsWindow: View {
             .navigationTitle(vxT("Settings", "Einstellungen"))
             .navigationSplitViewColumnWidth(min: 260, ideal: 290, max: 340)
         } detail: {
-            page(selection ?? .presets).id(selection).onAppear { focus.key = nil }
+            page(selection ?? .presets).id(selection).onAppear { focus.key = ProcessInfo.processInfo.environment["VXRT_SETTINGS_HELP"] }
         }
         .environmentObject(focus)
         .toolbar { ToolbarItem(placement: .confirmationAction) { Button(vxT("Done", "Fertig"), action: done) } }
@@ -479,7 +497,7 @@ struct VXPicturePage: View {
         VXBox(title: vxT("Size", "Größe")) {
             VXRow(title: vxT("Base resolution per eye", "Basisauflösung je Auge"), help: "baseResolution") {
                 Picker(vxT("Base resolution per eye", "Basisauflösung je Auge"), selection: $settings.baseResolution) {
-                    ForEach(VXSettings.baseResolutions, id: \.self) { v in Text(v == 0 ? "Standard (\(VXSettings.baseResolutionStandard))" : "\(v)").tag(v) }
+                    ForEach(VXSettings.baseResolutions, id: \.self) { v in Text(verbatim: v == 0 ? "Standard (\(VXSettings.baseResolutionStandard))" : String(v)).tag(v) }
                 }.labelsHidden()
             }
             HStack {
@@ -504,13 +522,15 @@ struct VXPicturePage: View {
                     Text(vxT("High", "Stark")).tag(VXFoveatedRendering.high)
                 }.pickerStyle(.segmented).labelsHidden().frame(maxWidth: 400)
             }
-            VXRow(title: vxT("Unseen edge", "Unsichtbarer Rand"), help: "edgeMask") {
+            // Three long choices: the title above them, not beside.
+            VStack(alignment: .leading, spacing: 8) {
+                Text(vxT("Unseen edge", "Unsichtbarer Rand"))
                 Picker(vxT("Unseen edge", "Unsichtbarer Rand"), selection: $settings.edgeMask) {
                     Text(vxT("Draw everything", "Alles zeichnen")).tag(VXEdgeMask.off)
                     Text(vxT("Skip a little", "Wenig auslassen")).tag(VXEdgeMask.slight)
                     Text(vxT("Skip more", "Mehr auslassen")).tag(VXEdgeMask.standard)
-                }.pickerStyle(.segmented).labelsHidden().frame(maxWidth: 440)
-            }
+                }.pickerStyle(.segmented).labelsHidden()
+            }.vxHelp("edgeMask")
             VXRow(title: vxT("Display quality", "Anzeigequalität"), help: "displayQuality") {
                 Picker(vxT("Display quality", "Anzeigequalität"), selection: Binding(get: { settings.displayQuality }, set: { settings.displayQuality = $0 })) {
                     Text(vxT("High", "Hoch")).tag(1.0)
