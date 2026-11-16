@@ -181,3 +181,49 @@ enum VXDeviceKind: String {
     /// The mixed space's and the full space's highest rate: 100/120 on the M5; the M2's display has no 120 Hz.
     var rates: (mixed: Int, full: Int) { self == .m2 ? (90, 100) : (100, 120) }
 }
+
+/// One dial of a preset, for "what has changed since the preset" on the presets page (as LambdaVision's Half-Life
+/// shows it). Only the picture: frame rate, smoothness, the game's options and the play area are never part of it.
+enum VXPictureField: String, CaseIterable {
+    case baseResolution, renderScale, upscale, foveatedRendering, edgeMask, displayQuality, plainResample
+
+    func value(in p: VXPicture) -> String {
+        switch self {
+        case .baseResolution: return String(p.baseResolution)
+        case .renderScale: return String(Int((p.renderScale * 100).rounded()))
+        case .upscale: return p.upscale
+        case .foveatedRendering: return p.foveatedRendering
+        case .edgeMask: return p.edgeMask
+        case .displayQuality: return String(format: "%.2f", p.displayQuality)
+        case .plainResample: return p.plainResample ? "1" : "0"
+        }
+    }
+}
+
+enum VXPictureDiff {
+    static func changes(from preset: VXPicture, to now: VXPicture) -> [VXPictureField] {
+        VXPictureField.allCases.filter { $0.value(in: preset) != $0.value(in: now) }
+    }
+}
+
+/// Which preset was chosen last ("b:<built-in id>" or "c:<UUID>").
+struct VXLastPreset {
+    static let key = "vxrt.presets.last"
+    let defaults: UserDefaults
+    init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+    var id: VXPresetID? {
+        get {
+            guard let s = defaults.string(forKey: Self.key) else { return nil }
+            if s.hasPrefix("b:") { return VXBuiltInPreset(rawValue: String(s.dropFirst(2))).map { .builtIn($0) } }
+            if s.hasPrefix("c:") { return UUID(uuidString: String(s.dropFirst(2))).map { .custom($0) } }
+            return nil
+        }
+        nonmutating set {
+            switch newValue {
+            case .builtIn(let k)?: defaults.set("b:" + k.rawValue, forKey: Self.key)
+            case .custom(let u)?: defaults.set("c:" + u.uuidString, forKey: Self.key)
+            case nil: defaults.removeObject(forKey: Self.key)
+            }
+        }
+    }
+}

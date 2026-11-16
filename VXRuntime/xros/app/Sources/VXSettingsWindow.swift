@@ -28,16 +28,87 @@ final class VXSettingsFocus: ObservableObject { @Published var key: String? }
 private struct VXHelpModifier: ViewModifier {
     @EnvironmentObject private var focus: VXSettingsFocus
     let key: String
+    /// With the ⓘ button beside it (a row puts it beside its title instead).
+    let info: Bool
     func body(content: Content) -> some View {
-        content.contentShape(Rectangle())
-            .onHover { if $0 { focus.key = key } }
-            .simultaneousGesture(TapGesture().onEnded { focus.key = key })
+        Group {
+            if info {
+                HStack(alignment: .top, spacing: 8) { content.frame(maxWidth: .infinity, alignment: .leading); VXInfoButton(key: key) }
+            } else {
+                content
+            }
+        }
+        .contentShape(Rectangle())
+        .onHover { if $0 { focus.key = key } }
+        .simultaneousGesture(TapGesture().onEnded { focus.key = key })
+    }
+}
+
+/// The ⓘ beside a setting: shows its explanation on the right – a tap, so it works by touch as well (the owner's finding,
+/// 2026-11-16: by touch the column did not always follow).
+struct VXInfoButton: View {
+    @EnvironmentObject private var focus: VXSettingsFocus
+    let key: String
+    var body: some View {
+        Button { focus.key = key } label: {
+            Image(systemName: focus.key == key ? "info.circle.fill" : "info.circle")
+                .foregroundStyle(focus.key == key ? Color.accentColor : .secondary)
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel(vxT("What this does", "Was das bewirkt"))
     }
 }
 
 extension View {
-    /// Shows `key`'s explanation on the right while this is looked at or touched.
-    func vxHelp(_ key: String) -> some View { modifier(VXHelpModifier(key: key)) }
+    /// Shows `key`'s explanation on the right while this is looked at or touched, with an ⓘ button beside it.
+    func vxHelp(_ key: String, info: Bool = true) -> some View { modifier(VXHelpModifier(key: key, info: info)) }
+}
+
+/// A switch with its name, the ⓘ beside the name and the switch on the right.
+struct VXToggleRow: View {
+    let title: String
+    let help: String
+    @Binding var isOn: Bool
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(title)
+            VXInfoButton(key: help)
+            Spacer(minLength: 12)
+            Toggle(title, isOn: $isOn).labelsHidden()
+        }
+        .vxHelp(help, info: false)
+    }
+}
+
+/// Watches the settings the pages show and, when one changes – by touch, by looking and pinching –, shows its explanation
+/// on the right. Not on the presets page, where applying a preset changes many at once.
+struct VXFollowChanges: View {
+    let active: Bool
+    @EnvironmentObject private var focus: VXSettingsFocus
+    @ObservedObject private var settings = VXSettings.shared
+    private func show(_ key: String) { if active { focus.key = key } }
+    var body: some View {
+        Color.clear
+            .onChange(of: settings.baseResolution) { _, _ in show("baseResolution") }
+            .onChange(of: settings.renderScale) { _, _ in show("resolution") }
+            .onChange(of: settings.upscale) { _, _ in show("upscale") }
+            .onChange(of: settings.foveatedRendering) { _, _ in show("foveation") }
+            .onChange(of: settings.edgeMask) { _, _ in show("edgeMask") }
+            .onChange(of: settings.displayQuality) { _, _ in show("displayQuality") }
+            .onChange(of: settings.plainResample) { _, _ in show("filter") }
+            .onChange(of: settings.maxRate) { _, _ in show("frameRate") }
+            .onChange(of: settings.latency) { _, _ in show("latency") }
+            .onChange(of: settings.showHands) { _, _ in show("hands") }
+            .onChange(of: settings.statsPanel) { _, _ in show("panel") }
+            .onChange(of: settings.startAutomatically) { _, _ in show("autoStart") }
+            .onChange(of: settings.gameLanguage) { _, _ in show("language") }
+            .onChange(of: settings.graphics) { _, _ in show("graphics") }
+            .onChange(of: settings.turn) { _, _ in show("controls") }
+            .onChange(of: settings.move) { _, _ in show("controls") }
+            .onChange(of: settings.snapAngle) { _, _ in show("controls") }
+            .onChange(of: settings.turnSpeed) { _, _ in show("controls") }
+            .accessibilityHidden(true)
+    }
 }
 
 struct VXHelpEntry {
@@ -307,6 +378,8 @@ struct VXHelpLarge: View {
 struct VXPage<Content: View>: View {
     let title: String
     let help: String
+    /// Above the explanation in the right column (the presets page: what has changed since the preset).
+    var side: AnyView? = nil
     @ViewBuilder let content: Content
     var body: some View {
         HStack(spacing: 0) {
@@ -315,7 +388,11 @@ struct VXPage<Content: View>: View {
                     .padding(.horizontal, 28).padding(.vertical, 20).frame(maxWidth: .infinity, alignment: .leading)
             }
             Divider()
-            VXHelpPane(pageKey: help).frame(width: 380)
+            VStack(spacing: 0) {
+                if let side { side.padding(.horizontal, 20).padding(.top, 20) }
+                VXHelpPane(pageKey: help)
+            }
+            .frame(width: 380)
         }
         .navigationTitle(title)
     }
@@ -332,9 +409,19 @@ struct VXBox<Content: View>: View {
 struct VXRow<Control: View>: View {
     let title: String
     let help: String
+    /// The control under the title, the page's whole width (a long row of choices).
+    var stacked = false
     @ViewBuilder let control: Control
     var body: some View {
-        HStack(spacing: 16) { Text(title); Spacer(minLength: 12); control }.vxHelp(help)
+        Group {
+            if stacked {
+                VStack(alignment: .leading, spacing: 8) { HStack(spacing: 8) { Text(title); VXInfoButton(key: help) }; control }
+            } else {
+                HStack(spacing: 8) { Text(title); VXInfoButton(key: help); Spacer(minLength: 12); control }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .vxHelp(help, info: false)
     }
 }
 
@@ -408,6 +495,7 @@ struct VXSettingsWindow: View {
             .navigationSplitViewColumnWidth(min: 260, ideal: 290, max: 340)
         } detail: {
             page(selection ?? .presets).id(selection).onAppear { focus.key = ProcessInfo.processInfo.environment["VXRT_SETTINGS_HELP"] }
+                .background { VXFollowChanges(active: selection != .presets) }
         }
         .environmentObject(focus)
         .toolbar { ToolbarItem(placement: .confirmationAction) { Button(vxT("Done", "Fertig"), action: done) } }
@@ -439,7 +527,7 @@ struct VXSettingsWindow: View {
 
     @ViewBuilder private func page(_ id: VXSettingsPageID) -> some View {
         switch id {
-        case .presets: VXPage(title: vxT("Presets", "Presets"), help: "presets") { VXPresetsPage() }
+        case .presets: VXPage(title: vxT("Presets", "Presets"), help: "presets", side: AnyView(VXPresetChanges())) { VXPresetsPage() }
         case .picture: VXPage(title: vxT("Picture", "Bild"), help: "baseResolution") { VXPicturePage(); startedNote }
         case .motion: VXPage(title: vxT("Frame rate", "Bildrate"), help: "frameRate") { VXMotionPage(); startedNote }
         case .hands: VXPage(title: vxT("Hands & panel", "Hände & Anzeige"), help: "hands") { VXHandsPage() }
@@ -449,7 +537,7 @@ struct VXSettingsWindow: View {
         case .mods: VXPage(title: "Mods", help: "mods") { VXModsList() }
         case .start: VXPage(title: vxT("Start", "Start"), help: "autoStart") {
             VXBox(title: vxT("Start", "Start")) {
-                Toggle(vxT("Start automatically", "Automatisch starten"), isOn: $settings.startAutomatically).vxHelp("autoStart")
+                VXToggleRow(title: vxT("Start automatically", "Automatisch starten"), help: "autoStart", isOn: $settings.startAutomatically)
             }
         }
         case .advanced: VXPage(title: vxT("Advanced", "Erweitert"), help: "advanced") { VXAdvancedPage() }
@@ -459,6 +547,75 @@ struct VXSettingsWindow: View {
 }
 
 // MARK: - Presets
+
+/// The presets page's right column, on top: which preset the picture comes from and what has changed since, dial by dial –
+/// as LambdaVision's Half-Life shows it. Only the picture: the frame rate, smoothness, the game's options and the play area are
+/// never part of a preset and so never shown here as a change.
+struct VXPresetChanges: View {
+    @ObservedObject private var settings = VXSettings.shared
+
+    private func title(_ f: VXPictureField) -> String {
+        switch f {
+        case .baseResolution: return vxT("Base resolution per eye", "Basisauflösung je Auge")
+        case .renderScale: return vxT("Resolution", "Auflösung")
+        case .upscale: return vxT("Upscaling", "Hochskalieren")
+        case .foveatedRendering: return "Foveated Rendering"
+        case .edgeMask: return vxT("Unseen edge", "Unsichtbarer Rand")
+        case .displayQuality: return vxT("Display quality", "Anzeigequalität")
+        case .plainResample: return vxT("Picture filter", "Bildfilter")
+        }
+    }
+    private func value(_ f: VXPictureField, _ p: VXPicture) -> String {
+        switch f {
+        case .baseResolution: return p.baseResolution == 0 ? "Standard (\(VXSettings.baseResolutionStandard))" : String(p.baseResolution)
+        case .renderScale: return String(format: "%.0f %%", p.renderScale * 100)
+        case .upscale: return p.upscale == VXUpscale.metalfx.rawValue ? "MetalFX" : vxT("Plain", "Einfach")
+        case .foveatedRendering:
+            return ["off": vxT("Off", "Aus"), "low": vxT("Low", "Leicht"), "medium": vxT("Medium", "Mittel"), "high": vxT("High", "Stark")][p.foveatedRendering] ?? p.foveatedRendering
+        case .edgeMask:
+            return ["off": vxT("Draw everything", "Alles zeichnen"), "slight": vxT("Skip a little", "Wenig auslassen"),
+                    "standard": vxT("Skip more", "Mehr auslassen")][p.edgeMask] ?? p.edgeMask
+        case .displayQuality: return p.displayQuality >= 0.99 ? vxT("High", "Hoch") : p.displayQuality >= 0.75 ? vxT("Medium", "Mittel") : vxT("Low", "Niedrig")
+        case .plainResample: return p.plainResample ? vxT("Plain", "Einfach") : vxT("Sharp", "Scharf")
+        }
+    }
+
+    var body: some View {
+        let now = settings.picture
+        let store = VXPresetStore()
+        let standard = VXSettings.standardPicture(info: Bundle.main.infoDictionary ?? [:])
+        let active = VXPresetRules.matching(now, standard: standard, custom: store.presets)
+        var refName = VXBuiltInPreset.standard.name
+        var refPicture = standard
+        switch VXLastPreset().id {
+        case .builtIn(let k)?: refName = k.name; refPicture = VXPresetRules.picture(k, standard: standard)
+        case .custom(let u)?: if let p = store.presets.first(where: { $0.id == u }) { refName = p.name; refPicture = p.picture }
+        case nil: break
+        }
+        let changes = VXPictureDiff.changes(from: refPicture, to: now)
+        return VStack(alignment: .leading, spacing: 10) {
+            if let active {
+                let name: String = { switch active { case .builtIn(let k): return k.name; case .custom(let u): return store.presets.first { $0.id == u }?.name ?? "" } }()
+                Label(vxT("Set: \(name)", "Eingestellt: \(name)"), systemImage: "checkmark.circle.fill").font(.headline).foregroundStyle(.green)
+                Text(vxT("Nothing changed since the preset.", "Seit dem Preset nichts geändert.")).font(.callout).foregroundStyle(.secondary)
+            } else {
+                Label(vxT("Changed since \"\(refName)\"", "Geändert seit „\(refName)“"), systemImage: "slider.horizontal.below.square.filled.and.square")
+                    .font(.headline)
+                ForEach(changes, id: \.self) { f in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title(f)).font(.callout.weight(.semibold))
+                        Text("\(value(f, refPicture))  →  \(value(f, now))").font(.callout).foregroundStyle(.secondary)
+                    }
+                }
+                Text(vxT("Save it as a preset of your own on the left, or choose a preset to go back.",
+                         "Links als eigenes Preset speichern oder ein Preset wählen, um zurückzukehren."))
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+            Divider().padding(.top, 6)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
 
 struct VXPresetsPage: View {
     @ObservedObject private var settings = VXSettings.shared
@@ -494,7 +651,7 @@ struct VXPresetsPage: View {
             VXBox(title: vxT("Come with the app", "Mitgeliefert")) {
                 ForEach(VXBuiltInPreset.allCases) { k in
                     presetRow(k.name, detail(k), active == .builtIn(k), "preset.\(k.rawValue)") {
-                        settings.apply(VXPresetRules.picture(k, standard: standard)); generation += 1
+                        settings.apply(VXPresetRules.picture(k, standard: standard)); VXLastPreset().id = .builtIn(k); generation += 1
                     }
                     if k != VXBuiltInPreset.allCases.last { Divider() }
                 }
@@ -508,7 +665,7 @@ struct VXPresetsPage: View {
                 ForEach(custom) { p in
                     HStack {
                         presetRow(p.name, p.device.isEmpty ? "" : "Vision Pro \(p.device)", active == .custom(p.id), "preset.own") {
-                            settings.apply(p.picture); generation += 1
+                            settings.apply(p.picture); VXLastPreset().id = .custom(p.id); generation += 1
                         }
                         ShareLink(item: VXPresetStore.shareText(p)) { Image(systemName: "square.and.arrow.up") }.buttonStyle(.borderless)
                         Menu {
@@ -524,7 +681,8 @@ struct VXPresetsPage: View {
                 HStack {
                     TextField(vxT("Name for the current picture", "Name für das aktuelle Bild"), text: $newName).textFieldStyle(.roundedBorder)
                     Button(vxT("Save", "Speichern")) {
-                        store.save(name: newName, picture: now, device: VXDevice.kind.rawValue); newName = ""; generation += 1
+                        let saved = store.save(name: newName, picture: now, device: VXDevice.kind.rawValue)
+                        VXLastPreset().id = .custom(saved.id); newName = ""; generation += 1
                     }.disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
                 }.vxHelp("preset.own")
                 HStack {
@@ -598,23 +756,23 @@ struct VXPicturePage: View {
             }
         }
         VXBox(title: vxT("Detail", "Details")) {
-            VXRow(title: "Foveated Rendering", help: "foveation") {
+            VXRow(title: "Foveated Rendering", help: "foveation", stacked: true) {
                 Picker("Foveated Rendering", selection: $settings.foveatedRendering) {
                     Text(vxT("Off", "Aus")).tag(VXFoveatedRendering.off)
                     Text(vxT("Low", "Leicht")).tag(VXFoveatedRendering.low)
                     Text(vxT("Medium", "Mittel")).tag(VXFoveatedRendering.medium)
                     Text(vxT("High", "Stark")).tag(VXFoveatedRendering.high)
-                }.pickerStyle(.segmented).labelsHidden().frame(maxWidth: 400)
+                }.pickerStyle(.segmented).labelsHidden()
             }
             // Three long choices: the title above them, not beside.
             VStack(alignment: .leading, spacing: 8) {
-                Text(vxT("Unseen edge", "Unsichtbarer Rand"))
+                HStack(spacing: 8) { Text(vxT("Unseen edge", "Unsichtbarer Rand")); VXInfoButton(key: "edgeMask") }
                 Picker(vxT("Unseen edge", "Unsichtbarer Rand"), selection: $settings.edgeMask) {
                     Text(vxT("Draw everything", "Alles zeichnen")).tag(VXEdgeMask.off)
                     Text(vxT("Skip a little", "Wenig auslassen")).tag(VXEdgeMask.slight)
                     Text(vxT("Skip more", "Mehr auslassen")).tag(VXEdgeMask.standard)
                 }.pickerStyle(.segmented).labelsHidden()
-            }.vxHelp("edgeMask")
+            }.vxHelp("edgeMask", info: false)
             VXRow(title: vxT("Display quality", "Anzeigequalität"), help: "displayQuality") {
                 Picker(vxT("Display quality", "Anzeigequalität"), selection: Binding(get: { settings.displayQuality }, set: { settings.displayQuality = $0 })) {
                     Text(vxT("High", "Hoch")).tag(1.0)
@@ -643,12 +801,12 @@ struct VXMotionPage: View {
                     Text(vxT("Up to \(r.full)", "Bis \(r.full)")).tag(120)
                 }.pickerStyle(.segmented).labelsHidden().frame(maxWidth: 280)
             }
-            VXRow(title: vxT("Smoothness", "Flüssigkeit"), help: "latency") {
+            VXRow(title: vxT("Smoothness", "Flüssigkeit"), help: "latency", stacked: true) {
                 Picker(vxT("Smoothness", "Flüssigkeit"), selection: $settings.latency) {
                     Text(vxT("Balanced", "Ausgewogen")).tag(VXLatency.smart)
                     Text(vxT("Fresher picture", "Frischeres Bild")).tag(VXLatency.lower)
                     Text(vxT("Most frames", "Meiste Bilder")).tag(VXLatency.throughput)
-                }.pickerStyle(.segmented).labelsHidden().frame(maxWidth: 440)
+                }.pickerStyle(.segmented).labelsHidden()
             }
         }
         if VXDevice.kind == .m2 {
@@ -663,10 +821,10 @@ struct VXHandsPage: View {
     @ObservedObject private var settings = VXSettings.shared
     var body: some View {
         VXBox(title: vxT("Your hands", "Deine Hände")) {
-            Toggle(vxT("Show my real hands over the game", "Meine echten Hände über dem Spiel zeigen"), isOn: $settings.showHands).vxHelp("hands")
+            VXToggleRow(title: vxT("Show my real hands over the game", "Meine echten Hände über dem Spiel zeigen"), help: "hands", isOn: $settings.showHands)
         }
         VXBox(title: vxT("Performance panel", "Leistungsanzeige")) {
-            Toggle(vxT("Show from the start", "Von Anfang an zeigen"), isOn: $settings.statsPanel).vxHelp("panel")
+            VXToggleRow(title: vxT("Show from the start", "Von Anfang an zeigen"), help: "panel", isOn: $settings.statsPanel)
         }
     }
 }
@@ -709,13 +867,13 @@ struct VXGameLanguagePage: View {
             Text(languageNote).font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
         VXBox(title: vxT("Graphics quality", "Grafikqualität")) {
-            VXRow(title: vxT("Graphics quality", "Grafikqualität"), help: "graphics") {
+            VXRow(title: vxT("Graphics quality", "Grafikqualität"), help: "graphics", stacked: true) {
                 Picker(vxT("Graphics quality", "Grafikqualität"), selection: $settings.graphics) {
                     Text("Standard").tag(VXGraphics.standard)
                     Text(vxT("Low", "Niedrig")).tag(VXGraphics.low)
                     Text(vxT("Medium", "Mittel")).tag(VXGraphics.medium)
                     Text(vxT("High", "Hoch")).tag(VXGraphics.high)
-                }.pickerStyle(.segmented).labelsHidden().frame(maxWidth: 420)
+                }.pickerStyle(.segmented).labelsHidden()
             }
         }
     }
@@ -726,12 +884,12 @@ struct VXTurnMovePage: View {
     private static var gameDefault: String { vxT("Game default", "Wie im Spiel") }
     var body: some View {
         VXBox(title: vxT("Turning", "Drehen")) {
-            VXRow(title: vxT("Turning", "Drehen"), help: "controls") {
+            VXRow(title: vxT("Turning", "Drehen"), help: "controls", stacked: true) {
                 Picker(vxT("Turning", "Drehen"), selection: $settings.turn) {
                     Text(Self.gameDefault).tag(VXTurn.game)
                     Text(vxT("Snap", "In Schritten")).tag(VXTurn.snap)
                     Text(vxT("Smooth", "Fließend")).tag(VXTurn.smooth)
-                }.pickerStyle(.segmented).labelsHidden().frame(maxWidth: 420)
+                }.pickerStyle(.segmented).labelsHidden()
             }
             Toggle(vxT("Snap angle: game default", "Schrittwinkel: wie im Spiel"),
                    isOn: Binding(get: { settings.snapAngle == nil }, set: { settings.snapAngle = $0 ? nil : VXSettings.snapAngleBuiltIn })).vxHelp("controls")
@@ -751,12 +909,12 @@ struct VXTurnMovePage: View {
             }
         }
         VXBox(title: vxT("Movement", "Bewegung")) {
-            VXRow(title: vxT("Movement", "Bewegung"), help: "controls") {
+            VXRow(title: vxT("Movement", "Bewegung"), help: "controls", stacked: true) {
                 Picker(vxT("Movement", "Bewegung"), selection: $settings.move) {
                     Text(Self.gameDefault).tag(VXMove.game)
                     Text(vxT("Teleport", "Teleport")).tag(VXMove.teleport)
                     Text(vxT("Walk", "Gehen")).tag(VXMove.walk)
-                }.pickerStyle(.segmented).labelsHidden().frame(maxWidth: 420)
+                }.pickerStyle(.segmented).labelsHidden()
             }
         }
     }

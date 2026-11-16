@@ -59,6 +59,17 @@ func fresh() -> UserDefaults { let n = "vxrt-presets-test-\(UUID().uuidString)";
               && VXDeviceKind.from(model: "arm64") == .m5 && VXDeviceKind.from(model: "x", override: "m2") == .m2, "device kind")
         check(VXDeviceKind.m2.rates == (90, 100) && VXDeviceKind.m5.rates == (100, 120), "rates")
 
+        // what has changed since a preset
+        check(VXPictureDiff.changes(from: std, to: std).isEmpty, "no change")
+        check(VXPictureDiff.changes(from: perf, to: std).map(\.rawValue) == ["baseResolution"], "from performance: the base")
+        check(VXPictureDiff.changes(from: std, to: q).map(\.rawValue) == ["baseResolution", "edgeMask", "displayQuality"], "to quality")
+        let last = VXLastPreset(defaults: fresh())
+        check(last.id == nil, "no last preset")
+        last.id = .builtIn(.quality)
+        check(last.id == .builtIn(.quality), "last built-in")
+        let u = UUID(); last.id = .custom(u)
+        check(last.id == .custom(u), "last own")
+
         print(failures == 0 ? "xros presets: ok" : "xros presets: \(failures) FAILED")
         exit(failures == 0 ? 0 : 1)
     }
