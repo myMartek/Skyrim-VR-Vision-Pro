@@ -309,6 +309,12 @@ xros-settings-check: tests/xros_settings_test.swift xros/app/Sources/VXSettings.
 	swiftc -parse-as-library -o build/xros_settings_test xros/app/Sources/VXSettings.swift tests/xros_settings_test.swift
 	build/xros_settings_test
 
+# The settings window's picture presets (xros/app/Sources/VXPresets.swift) over the settings store, on the Mac.
+xros-presets-check: tests/xros_presets_test.swift xros/app/Sources/VXPresets.swift xros/app/Sources/VXSettings.swift
+	@mkdir -p build
+	swiftc -parse-as-library -o build/xros_presets_test xros/app/Sources/VXSettings.swift xros/app/Sources/VXPresets.swift tests/xros_presets_test.swift
+	build/xros_presets_test
+
 # The two menu buttons' logic for the performance panel (Create + Options), on the Mac.
 # The pixel shader variant for foveated rendering (dxbc_translate_fove): every pixel shader fixture translates to it and
 # Metal compiles the result (gathers, loads, size queries and samples of 2D textures all go through its coordinate
@@ -330,7 +336,7 @@ xros-stats-chord-check: tests/xros_stats_chord_test.swift xros/app/Sources/VXSta
 	swiftc -D VX_CHORD_TEST -parse-as-library -o build/xros_stats_chord_test xros/app/Sources/VXStatsPanel.swift tests/xros_stats_chord_test.swift
 	build/xros_stats_chord_test
 .PHONY: xros-stats-chord-check
-check: native-vr-unit-check xros-settings-check xros-stats-chord-check xros-mods-check xros-prune-check fove-variant-check
+check: native-vr-unit-check xros-settings-check xros-presets-check xros-stats-chord-check xros-mods-check xros-prune-check fove-variant-check
 xros-prune-check: tests/xros_prune_test.c xros/app/Sources/vx_prune.h
 	@mkdir -p build
 	clang -Wall -Wextra -Ixros/app/Sources -o build/xros_prune_test tests/xros_prune_test.c
@@ -339,7 +345,7 @@ xros-mods-check: tests/xros_mods_test.swift xros/app/Sources/VXMods.swift
 	@mkdir -p build
 	swiftc -parse-as-library -o build/xros_mods_test xros/app/Sources/VXMods.swift tests/xros_mods_test.swift
 	build/xros_mods_test tests/fixtures/mods_pack_skyland.json
-.PHONY: xros-settings-check xros-mods-check xros-prune-check
+.PHONY: xros-settings-check xros-presets-check xros-mods-check xros-prune-check
 
 native-vr-check: build/vxrt build/vxrt-arm64 build/vxrt-aot build/native_vr_d3d11.exe build/native_vr_test
 	build/native_vr_test
